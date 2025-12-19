@@ -58,9 +58,6 @@ function getIcon(name) {
         seed: '<i class="fas fa-seedling"></i>',
         heart: '<i class="fas fa-heart"></i>',
         share: '<i class="fas fa-share"></i>',
-        ticket: '<i class="fas fa-ticket-alt"></i>',
-        gift: '<i class="fas fa-gift"></i>',
-        dice: '<i class="fas fa-dice"></i>'
     };
     
     return iconMap[name] || '';
@@ -234,9 +231,6 @@ function navigateTo(page, data) {
         case 'subscriptions':
             renderSubscriptions();
             break;
-        case 'lottery':
-            renderLottery();
-            break;
         case 'cart':
             renderCart();
             break;
@@ -289,7 +283,6 @@ async function renderNav() {
     <button class="nav-btn ${currentPage === 'products' ? 'active' : ''}" onclick="navigateTo('products')">${getIcon('package')} Продукты</button>
     <button class="nav-btn ${currentPage === 'suppliers' ? 'active' : ''}" onclick="navigateTo('suppliers')">${getIcon('users')} Поставщики</button>
     <button class="nav-btn ${currentPage === 'subscriptions' ? 'active' : ''}" onclick="navigateTo('subscriptions')">${getIcon('calendar')} Подписки</button>
-    <button class="nav-btn ${currentPage === 'lottery' ? 'active' : ''}" onclick="navigateTo('lottery')">${getIcon('ticket')} Лотерея</button>
     <div style="position: relative;">
         <button class="nav-btn ${currentPage === 'cart' ? 'active' : ''}" onclick="navigateTo('cart')">
             ${getIcon('shoppingCart')} Корзина
@@ -303,7 +296,6 @@ async function renderNav() {
     <button class="nav-btn ${currentPage === 'products' ? 'active' : ''}" onclick="navigateTo('products')">${getIcon('package')} Продукты</button>
     <button class="nav-btn ${currentPage === 'suppliers' ? 'active' : ''}" onclick="navigateTo('suppliers')">${getIcon('users')} Поставщики</button>
     <button class="nav-btn ${currentPage === 'subscriptions' ? 'active' : ''}" onclick="navigateTo('subscriptions')">${getIcon('calendar')} Подписки</button>
-    <button class="nav-btn ${currentPage === 'lottery' ? 'active' : ''}" onclick="navigateTo('lottery')">${getIcon('ticket')} Лотерея</button>
     <div style="position: relative;">
         <button class="nav-btn ${currentPage === 'cart' ? 'active' : ''}" onclick="navigateTo('cart')">
             ${getIcon('shoppingCart')} Корзина
@@ -1009,203 +1001,6 @@ async function toggleSubscription(subId) {
     } catch (error) {
         showToast('error', 'Ошибка', 'Не удалось активировать подписку');
         console.error('Ошибка при активации подписки:', error);
-    }
-}
-
-async function renderLottery() {
-    if (!currentUser) {
-        document.getElementById('lotteryContent').innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">${getIcon('ticket')}</div>
-                <p>Войдите, чтобы участвовать в лотерее</p>
-                <button class="btn btn-primary mt-2" onclick="openAuthModal()">Войти</button>
-            </div>
-        `;
-        return;
-    }
-
-    try {
-        const lotteries = await apiRequest('/lottery/active');
-        const userTickets = await apiRequest('/lottery/user/tickets');
-        const userPrizes = await apiRequest('/lottery/user/prizes');
-
-        let html = `
-            <div class="grid grid-2 mb-4" style="gap: 2rem;">
-                <div class="card">
-                    <div class="card-content">
-                        <h3>${getIcon('ticket')} Мои билеты</h3>
-                        <p style="font-size: 2rem; font-weight: 700; color: #16a34a; margin-top: 0.5rem;">${userTickets.length}</p>
-                        <p class="text-gray" style="margin-top: 0.5rem;">Всего билетов куплено</p>
-                    </div>
-                </div>
-                <div class="card">
-                    <div class="card-content">
-                        <h3>${getIcon('gift')} Мои призы</h3>
-                        <p style="font-size: 2rem; font-weight: 700; color: #f59e0b; margin-top: 0.5rem;">${userPrizes.filter(p => !p.claimed).length}</p>
-                        <p class="text-gray" style="margin-top: 0.5rem;">Призы готовы к получению</p>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        if (lotteries.length > 0) {
-            html += `
-                <h2 class="mb-4">${getIcon('dice')} Активные лотереи</h2>
-                <div class="grid grid-2 mb-4">
-            `;
-
-            for (const lottery of lotteries) {
-                const ticketsInLottery = userTickets.filter(t => t.lottery_id === lottery.id);
-                html += `
-                    <div class="card">
-                        <div class="card-content">
-                            <h3>${lottery.name}</h3>
-                            <p class="text-gray" style="margin: 0.5rem 0; font-size: 0.875rem;">${lottery.description}</p>
-                            
-                            <div style="margin: 1rem 0; padding: 1rem 0; border-top: 1px solid #e5e7eb; border-bottom: 1px solid #e5e7eb;">
-                                <div class="flex-between mb-2">
-                                    <span class="text-gray">Главный приз:</span>
-                                    <span style="font-weight: 600;">${lottery.grand_prize} ₽</span>
-                                </div>
-                                <div class="flex-between mb-2">
-                                    <span class="text-gray">Цена билета:</span>
-                                    <span style="font-weight: 600;">${lottery.ticket_price} ₽</span>
-                                </div>
-                                <div class="flex-between">
-                                    <span class="text-gray">Ваши билеты:</span>
-                                    <span style="font-weight: 600; color: #16a34a;">${ticketsInLottery.length}</span>
-                                </div>
-                            </div>
-                            
-                            <button class="btn btn-primary" style="width: 100%;" onclick="buyLotteryTicket('${lottery.id}', ${lottery.ticket_price})">
-                                ${getIcon('plus')} Купить билет - ${lottery.ticket_price} ₽
-                            </button>
-                        </div>
-                    </div>
-                `;
-            }
-
-            html += `</div>`;
-        }
-
-        if (userTickets.length > 0) {
-            html += `
-                <h2 class="mb-4">Ваши билеты</h2>
-                <div class="card">
-                    <div class="card-content">
-                        <div style="overflow-x: auto;">
-                            <table style="width: 100%;">
-                                <thead>
-                                    <tr style="border-bottom: 2px solid #e5e7eb;">
-                                        <th style="text-align: left; padding: 0.75rem;">Номер билета</th>
-                                        <th style="text-align: left; padding: 0.75rem;">Лотерея</th>
-                                        <th style="text-align: left; padding: 0.75rem;">Дата покупки</th>
-                                        <th style="text-align: left; padding: 0.75rem;">Статус</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    ${userTickets.map(ticket => `
-                                        <tr style="border-bottom: 1px solid #e5e7eb;">
-                                            <td style="padding: 0.75rem; font-weight: 600;">#${ticket.ticket_number}</td>
-                                            <td style="padding: 0.75rem;">${ticket.lottery_name}</td>
-                                            <td style="padding: 0.75rem; font-size: 0.875rem; color: #6b7280;">${new Date(ticket.purchased_at).toLocaleDateString('ru-RU')}</td>
-                                            <td style="padding: 0.75rem;">
-                                                ${ticket.is_winner 
-                                                    ? `<span class="badge" style="background: #fbbf24; color: #92400e;">Выигрышный</span>` 
-                                                    : `<span class="badge" style="background: #e5e7eb; color: #6b7280;">В ожидании</span>`
-                                                }
-                                            </td>
-                                        </tr>
-                                    `).join('')}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            `;
-        }
-
-        if (userPrizes.length > 0) {
-            html += `
-                <h2 class="mb-4 mt-6">${getIcon('gift')} Выигранные призы</h2>
-                <div class="grid grid-2">
-            `;
-
-            for (const prize of userPrizes) {
-                html += `
-                    <div class="card">
-                        <div class="card-content">
-                            <div class="flex-between mb-2">
-                                <h3>${prize.prize_name}</h3>
-                                <span class="badge ${prize.claimed ? 'badge-green' : 'badge-yellow'}">
-                                    ${prize.claimed ? 'Получен' : 'К получению'}
-                                </span>
-                            </div>
-                            <p class="text-gray" style="margin-bottom: 1rem;">${prize.lottery_name}</p>
-                            <p style="font-weight: 600; color: #16a34a; font-size: 1.25rem; margin-bottom: 1rem;">${prize.prize_value} ₽</p>
-                            <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 1rem;">
-                                Билет: #${prize.ticket_number}
-                            </p>
-                            ${!prize.claimed ? `
-                                <button class="btn btn-primary" style="width: 100%;" onclick="claimPrize('${prize.id}')">
-                                    ${getIcon('gift')} Получить приз
-                                </button>
-                            ` : `
-                                <button class="btn btn-secondary" style="width: 100%;" disabled>
-                                    ${getIcon('check')} Приз получен
-                                </button>
-                            `}
-                        </div>
-                    </div>
-                `;
-            }
-
-            html += `</div>`;
-        }
-
-        document.getElementById('lotteryContent').innerHTML = html;
-    } catch (error) {
-        console.error('Ошибка при загрузке лотереи:', error);
-        document.getElementById('lotteryContent').innerHTML = '<p class="text-gray">Ошибка загрузки данных</p>';
-    }
-}
-
-async function buyLotteryTicket(lotteryId, ticketPrice) {
-    if (!currentUser) {
-        openAuthModal();
-        return;
-    }
-
-    try {
-        const confirmed = confirm(`Купить билет за ${ticketPrice} ₽?`);
-        if (!confirmed) return;
-
-        await apiRequest(`/lottery/${lotteryId}/buy-ticket`, {
-            method: 'POST'
-        });
-
-        renderLottery();
-        showToast('success', 'Билет куплен!', 'Спасибо за участие в лотерее');
-    } catch (error) {
-        showToast('error', 'Ошибка', error.message || 'Не удалось купить билет');
-        console.error('Ошибка при покупке билета:', error);
-    }
-}
-
-async function claimPrize(prizeId) {
-    try {
-        const confirmed = confirm('Получить приз?');
-        if (!confirmed) return;
-
-        await apiRequest(`/lottery/user/prizes/${prizeId}/claim`, {
-            method: 'POST'
-        });
-
-        renderLottery();
-        showToast('success', 'Приз получен!', 'Поздравляем с выигрышем');
-    } catch (error) {
-        showToast('error', 'Ошибка', error.message || 'Не удалось получить приз');
-        console.error('Ошибка при получении приза:', error);
     }
 }
 
