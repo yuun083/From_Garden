@@ -17,10 +17,12 @@ let currentPage = 'home';
 let selectedCategory = 'Все';
 let selectedSupplierId = null;
 let selectedProductId = null;
-let currentAdminTab = 'users';
+let currentAdminTab = 'dashboard';
 let authMode = 'login';
 let currentRating = 5;
 let currentProductRating = 5;
+let currentAdminPage = 1;
+let adminItemsPerPage = 10;
 
 function getIcon(name) {
     const iconMap = {
@@ -1341,17 +1343,27 @@ async function saveProfile(e) {
 
 function switchAdminTab(tab) {
     currentAdminTab = tab;
+    currentAdminPage = 1;
     
     document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
+    const activeBtn = event.target;
+    if (activeBtn) activeBtn.classList.add('active');
     
     renderAdminPanel();
 }
 
 async function renderAdminPanel() {
+    if (!isAdmin()) {
+        document.getElementById('adminContent').innerHTML = '<p class="text-gray">Доступ запрещен. Требуются права администратора.</p>';
+        return;
+    }
+
     let html = '';
 
     switch(currentAdminTab) {
+        case 'dashboard':
+            html = await renderAdminDashboard();
+            break;
         case 'users':
             html = await renderAdminUsers();
             break;
@@ -1367,23 +1379,74 @@ async function renderAdminPanel() {
         case 'orders':
             html = await renderAdminOrders();
             break;
+        case 'categories':
+            html = await renderAdminCategories();
+            break;
     }
 
     document.getElementById('adminContent').innerHTML = html;
 }
 
-async function renderAdminUsers() {
+async function renderAdminDashboard() {
     try {
-        const users = await apiRequest('/admin/users');
+        const stats = await apiRequest('/admin/dashboard');
         
         return `
+            <div class="grid grid-4 mb-4">
+                <div class="card">
+                    <div class="card-content">
+                        <p class="text-gray mb-2">Всего пользователей</p>
+                        <p style="font-size: 2.5rem; font-weight: 700; color: #16a34a;">${stats.total_users}</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-content">
+                        <p class="text-gray mb-2">Фермы</p>
+                        <p style="font-size: 2.5rem; font-weight: 700; color: #3b82f6;">${stats.total_farms}</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-content">
+                        <p class="text-gray mb-2">Продукты</p>
+                        <p style="font-size: 2.5rem; font-weight: 700; color: #f59e0b;">${stats.total_products}</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-content">
+                        <p class="text-gray mb-2">Заказы</p>
+                        <p style="font-size: 2.5rem; font-weight: 700; color: #ef4444;">${stats.total_orders}</p>
+                    </div>
+                </div>
+                <div class="card">
+                    <div class="card-content">
+                        <p class="text-gray mb-2">Отзывы</p>
+                        <p style="font-size: 2.5rem; font-weight: 700; color: #8b5cf6;">${stats.total_reviews}</p>
+                    </div>
+                </div>
+            </div>
+        `;
+    } catch (error) {
+        console.error('Ошибка при загрузке статистики:', error);
+        return '<p class="text-gray">Ошибка загрузки данных</p>';
+    }
+}
+
+async function renderAdminUsers() {
+    try {
+        const response = await apiRequest(`/admin/users?page=${currentAdminPage}&per_page=${adminItemsPerPage}`);
+        const users = response.users || [];
+        const total = response.total || 0;
+        const totalPages = response.total_pages || 1;
+        
+        let html = `
             <div class="card">
                 <div class="card-content">
-                    <h2 class="mb-4">Управление пользователями</h2>
+                    <h2 class="mb-4">Управление пользователями (всего: ${total})</h2>
                     <div style="overflow-x: auto;">
                         <table>
                             <thead>
                                 <tr>
+                                    <th>ID</th>
                                     <th>Имя</th>
                                     <th>Email</th>
                                     <th>Роль</th>
@@ -1394,6 +1457,7 @@ async function renderAdminUsers() {
                             <tbody>
                                 ${users.map(user => `
                                     <tr>
+                                        <td>${user.id}</td>
                                         <td>${user.name}</td>
                                         <td>${user.email}</td>
                                         <td>
@@ -1412,9 +1476,17 @@ async function renderAdminUsers() {
                             </tbody>
                         </table>
                     </div>
+                    ${totalPages > 1 ? `
+                        <div class="pagination" style="margin-top: 1rem; text-align: center;">
+                            ${currentAdminPage > 1 ? `<button class="btn btn-secondary btn-small" onclick="currentAdminPage--; renderAdminPanel()">Назад</button>` : ''}
+                            <span style="margin: 0 1rem;">Страница ${currentAdminPage} из ${totalPages}</span>
+                            ${currentAdminPage < totalPages ? `<button class="btn btn-secondary btn-small" onclick="currentAdminPage++; renderAdminPanel()">Далее</button>` : ''}
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
+        return html;
     } catch (error) {
         console.error('Ошибка при загрузке пользователей:', error);
         return '<p class="text-gray">Ошибка загрузки данных</p>';
@@ -1423,12 +1495,12 @@ async function renderAdminUsers() {
 
 async function updateUserRole(userId, newRole) {
     try {
-        await apiRequest(`/admin/users/${userId}/role`, {
-            method: 'PUT',
-            body: JSON.stringify({ role: newRole })
+        await apiRequest(`/admin/users/${userId}/role?new_role=${newRole}`, {
+            method: 'PUT'
         });
         
         showToast('success', 'Роль обновлена', 'Роль пользователя успешно изменена');
+        renderAdminPanel();
     } catch (error) {
         showToast('error', 'Ошибка', error.message || 'Не удалось обновить роль');
         console.error('Ошибка при обновлении роли:', error);
@@ -1439,7 +1511,7 @@ async function deleteUser(userId) {
     if (!confirm('Удалить пользователя?')) return;
     
     try {
-        await apiRequest(`/auth/${userId}`, {
+        await apiRequest(`/admin/users/${userId}`, {
             method: 'DELETE'
         });
         
@@ -1453,38 +1525,16 @@ async function deleteUser(userId) {
 
 async function renderAdminProducts() {
     try {
-        const products = await apiRequest('/products');
+        const response = await apiRequest(`/admin/products?page=${currentAdminPage}&per_page=${adminItemsPerPage}`);
+        const products = response.products || [];
+        const total = response.total || 0;
+        const totalPages = response.total_pages || 1;
         const suppliers = await apiRequest('/farms');
         
-        return `
+        let html = `
             <div class="card">
                 <div class="card-content">
-                    <div class="flex-between mb-4">
-                        <h2>Управление продуктами</h2>
-                        <button class="btn btn-primary" onclick="showAddProductForm()">${getIcon('plus')} Добавить продукт</button>
-                    </div>
-
-                    <div id="adminProductForm" style="display: none; background: #f9fafb; padding: 1.5rem; border-radius: 0.5rem; margin-bottom: 2rem;">
-                        <h3 class="mb-2">Новый продукт</h3>
-                        <form onsubmit="saveAdminProduct(event)" enctype="multipart/form-data">
-                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
-                                <input type="text" class="form-input" id="adminProductName" placeholder="Название" required>
-                                <input type="number" class="form-input" id="adminProductPrice" placeholder="Цена" required>
-                                <input type="text" class="form-input" id="adminProductUnit" placeholder="Единица измерения" required>
-                                <input type="text" class="form-input" id="adminProductCategory" placeholder="Категория" required>
-                                <select class="form-input" id="adminProductSupplier" required>
-                                    ${suppliers.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
-                                </select>
-                                <input type="file" class="form-input" id="adminProductImage" accept="image/*">
-                                <textarea class="form-input" id="adminProductDescription" placeholder="Описание" style="grid-column: 1 / -1;"></textarea>
-                            </div>
-                            <div class="flex gap-1 mt-2">
-                                <button type="submit" class="btn btn-primary">Сохранить</button>
-                                <button type="button" class="btn btn-secondary" onclick="hideAddProductForm()">Отмена</button>
-                            </div>
-                        </form>
-                    </div>
-
+                    <h2 class="mb-4">Управление продуктами (всего: ${total})</h2>
                     <div class="grid grid-3">
                         ${products.map(product => {
                             const supplier = suppliers.find(s => s.id === product.supplier_id);
@@ -1497,7 +1547,6 @@ async function renderAdminProducts() {
                                         <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">${supplier?.name || 'Без фермы'}</p>
                                         <p class="text-green mb-2">${product.price} ₽ / ${product.unit}</p>
                                         <div class="flex gap-1">
-                                            <button class="btn btn-primary btn-small flex-1" onclick="showEditProductForm('${product.id}')">${getIcon('edit')}</button>
                                             <button class="btn btn-danger btn-small flex-1" onclick="deleteProduct('${product.id}')">${getIcon('trash')}</button>
                                         </div>
                                     </div>
@@ -1505,54 +1554,20 @@ async function renderAdminProducts() {
                             `;
                         }).join('')}
                     </div>
+                    ${totalPages > 1 ? `
+                        <div class="pagination" style="margin-top: 1rem; text-align: center;">
+                            ${currentAdminPage > 1 ? `<button class="btn btn-secondary btn-small" onclick="currentAdminPage--; renderAdminPanel()">Назад</button>` : ''}
+                            <span style="margin: 0 1rem;">Страница ${currentAdminPage} из ${totalPages}</span>
+                            ${currentAdminPage < totalPages ? `<button class="btn btn-secondary btn-small" onclick="currentAdminPage++; renderAdminPanel()">Далее</button>` : ''}
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
+        return html;
     } catch (error) {
         console.error('Ошибка при загрузке продуктов:', error);
         return '<p class="text-gray">Ошибка загрузки данных</p>';
-    }
-}
-
-function showAddProductForm() {
-    document.getElementById('adminProductForm').style.display = 'block';
-}
-
-function hideAddProductForm() {
-    document.getElementById('adminProductForm').style.display = 'none';
-}
-
-async function saveAdminProduct(e) {
-    e.preventDefault();
-
-    const formData = new FormData();
-    formData.append('name', document.getElementById('adminProductName').value);
-    formData.append('price', document.getElementById('adminProductPrice').value);
-    formData.append('unit', document.getElementById('adminProductUnit').value);
-    formData.append('category', document.getElementById('adminProductCategory').value);
-    formData.append('supplier_id', document.getElementById('adminProductSupplier').value);
-    formData.append('description', document.getElementById('adminProductDescription').value);
-    
-    const imageInput = document.getElementById('adminProductImage');
-    if (imageInput.files[0]) {
-        formData.append('image', imageInput.files[0]);
-    }
-
-    try {
-        await fetch(`${API_BASE_URL}/products`, {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            },
-            body: formData
-        });
-
-        hideAddProductForm();
-        renderAdminPanel();
-        showToast('success', 'Продукт добавлен');
-    } catch (error) {
-        showToast('error', 'Ошибка', error.message || 'Не удалось добавить продукт');
-        console.error('Ошибка при добавлении продукта:', error);
     }
 }
 
@@ -1560,7 +1575,7 @@ async function deleteProduct(productId) {
     if (!confirm('Удалить продукт?')) return;
     
     try {
-        await apiRequest(`/products/${productId}`, {
+        await apiRequest(`/admin/products/${productId}`, {
             method: 'DELETE'
         });
         
@@ -1574,12 +1589,15 @@ async function deleteProduct(productId) {
 
 async function renderAdminSuppliers() {
     try {
-        const suppliers = await apiRequest('/farms');
+        const response = await apiRequest(`/admin/farms?page=${currentAdminPage}&per_page=${adminItemsPerPage}`);
+        const suppliers = response.farms || [];
+        const total = response.total || 0;
+        const totalPages = response.total_pages || 1;
         
-        return `
+        let html = `
             <div class="card">
                 <div class="card-content">
-                    <h2 class="mb-4">Управление поставщиками</h2>
+                    <h2 class="mb-4">Управление поставщиками (всего: ${total})</h2>
                     ${suppliers.map(supplier => `
                         <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem; display: flex; gap: 1rem;">
                             <img src="${supplier.image || '/static/images/default-farm.jpg'}" alt="${supplier.name}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 0.5rem;">
@@ -1589,40 +1607,28 @@ async function renderAdminSuppliers() {
                                         <p style="font-weight: 600;">${supplier.name}</p>
                                         <p style="font-size: 0.875rem; color: #6b7280;">${supplier.location}</p>
                                     </div>
-                                    <span class="badge ${supplier.approved ? 'badge-green' : 'badge-yellow'}">
-                                        ${supplier.approved ? 'Одобрен' : 'На модерации'}
-                                    </span>
                                 </div>
                                 <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${supplier.description}</p>
                                 <div class="flex gap-1">
-                                    <button class="btn ${supplier.approved ? 'btn-secondary' : 'btn-primary'} btn-small" onclick="toggleSupplierApproval('${supplier.id}')">
-                                        ${supplier.approved ? '❌ Отклонить' : '✅ Одобрить'}
-                                    </button>
                                     <button class="btn btn-danger btn-small" onclick="deleteSupplier('${supplier.id}')">${getIcon('trash')} Удалить</button>
                                 </div>
                             </div>
                         </div>
                     `).join('')}
+                    ${totalPages > 1 ? `
+                        <div class="pagination" style="margin-top: 1rem; text-align: center;">
+                            ${currentAdminPage > 1 ? `<button class="btn btn-secondary btn-small" onclick="currentAdminPage--; renderAdminPanel()">Назад</button>` : ''}
+                            <span style="margin: 0 1rem;">Страница ${currentAdminPage} из ${totalPages}</span>
+                            ${currentAdminPage < totalPages ? `<button class="btn btn-secondary btn-small" onclick="currentAdminPage++; renderAdminPanel()">Далее</button>` : ''}
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
+        return html;
     } catch (error) {
         console.error('Ошибка при загрузке поставщиков:', error);
         return '<p class="text-gray">Ошибка загрузки данных</p>';
-    }
-}
-
-async function toggleSupplierApproval(supplierId) {
-    try {
-        await apiRequest(`/farms/${supplierId}/toggle-approval`, {
-            method: 'POST'
-        });
-        
-        renderAdminPanel();
-        showToast('success', 'Статус изменен');
-    } catch (error) {
-        showToast('error', 'Ошибка', error.message || 'Не удалось изменить статус');
-        console.error('Ошибка при изменении статуса поставщика:', error);
     }
 }
 
@@ -1630,7 +1636,7 @@ async function deleteSupplier(supplierId) {
     if (!confirm('Удалить поставщика?')) return;
     
     try {
-        await apiRequest(`/farms/${supplierId}`, {
+        await apiRequest(`/admin/farms/${supplierId}`, {
             method: 'DELETE'
         });
         
@@ -1644,12 +1650,15 @@ async function deleteSupplier(supplierId) {
 
 async function renderAdminReviews() {
     try {
-        const reviews = await apiRequest('/reviews');
+        const response = await apiRequest(`/admin/reviews?page=${currentAdminPage}&per_page=${adminItemsPerPage}`);
+        const reviews = response.reviews || [];
+        const total = response.total || 0;
+        const totalPages = response.total_pages || 1;
         
-        return `
+        let html = `
             <div class="card">
                 <div class="card-content">
-                    <h2 class="mb-4">Управление отзывами (${reviews.length})</h2>
+                    <h2 class="mb-4">Управление отзывами (всего: ${total})</h2>
                     ${reviews.length === 0 ? '<p class="text-center text-gray" style="padding: 2rem 0;">Нет отзывов</p>' :
                         reviews.map(review => `
                             <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;">
@@ -1671,9 +1680,17 @@ async function renderAdminReviews() {
                             </div>
                         `).join('')
                     }
+                    ${totalPages > 1 ? `
+                        <div class="pagination" style="margin-top: 1rem; text-align: center;">
+                            ${currentAdminPage > 1 ? `<button class="btn btn-secondary btn-small" onclick="currentAdminPage--; renderAdminPanel()">Назад</button>` : ''}
+                            <span style="margin: 0 1rem;">Страница ${currentAdminPage} из ${totalPages}</span>
+                            ${currentAdminPage < totalPages ? `<button class="btn btn-secondary btn-small" onclick="currentAdminPage++; renderAdminPanel()">Далее</button>` : ''}
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
+        return html;
     } catch (error) {
         console.error('Ошибка при загрузке отзывов:', error);
         return '<p class="text-gray">Ошибка загрузки данных</p>';
@@ -1684,7 +1701,7 @@ async function deleteReview(reviewId) {
     if (!confirm('Удалить отзыв?')) return;
     
     try {
-        await apiRequest(`/reviews/${reviewId}`, {
+        await apiRequest(`/admin/reviews/${reviewId}`, {
             method: 'DELETE'
         });
         
@@ -1698,22 +1715,24 @@ async function deleteReview(reviewId) {
 
 async function renderAdminOrders() {
     try {
-        const orders = await apiRequest('/orders/all');
+        const response = await apiRequest(`/admin/orders?page=${currentAdminPage}&per_page=${adminItemsPerPage}`);
+        const orders = response.orders || [];
+        const total = response.total || 0;
+        const totalPages = response.total_pages || 1;
         
-        return `
+        let html = `
             <div class="card">
                 <div class="card-content">
-                    <h2 class="mb-4">Управление заказами (${orders.length})</h2>
+                    <h2 class="mb-4">Управление заказами (всего: ${total})</h2>
                     <div style="overflow-x: auto;">
                         <table>
                             <thead>
                                 <tr>
-                                    <th>ID заказа</th>
+                                    <th>ID</th>
                                     <th>Покупатель</th>
                                     <th>Сумма</th>
                                     <th>Статус</th>
                                     <th>Дата</th>
-                                    <th>Действия</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -1722,44 +1741,114 @@ async function renderAdminOrders() {
                                         <td>#${order.id}</td>
                                         <td>${order.user_name || 'Неизвестно'}</td>
                                         <td>${order.total} ₽</td>
-                                        <td>
-                                            <select class="form-input" style="padding: 0.5rem;" onchange="updateOrderStatus('${order.id}', this.value)">
-                                                <option value="pending" ${order.status === 'pending' ? 'selected' : ''}>Ожидает</option>
-                                                <option value="processing" ${order.status === 'processing' ? 'selected' : ''}>В обработке</option>
-                                                <option value="shipped" ${order.status === 'shipped' ? 'selected' : ''}>Отправлен</option>
-                                                <option value="delivered" ${order.status === 'delivered' ? 'selected' : ''}>Доставлен</option>
-                                                <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Отменен</option>
-                                            </select>
-                                        </td>
+                                        <td>${order.status}</td>
                                         <td>${new Date(order.created_at).toLocaleDateString('ru-RU')}</td>
-                                        <td>
-                                            <button class="btn btn-primary btn-small" onclick="viewAdminOrderDetails('${order.id}')">Детали</button>
-                                        </td>
                                     </tr>
                                 `).join('')}
                             </tbody>
                         </table>
                     </div>
+                    ${totalPages > 1 ? `
+                        <div class="pagination" style="margin-top: 1rem; text-align: center;">
+                            ${currentAdminPage > 1 ? `<button class="btn btn-secondary btn-small" onclick="currentAdminPage--; renderAdminPanel()">Назад</button>` : ''}
+                            <span style="margin: 0 1rem;">Страница ${currentAdminPage} из ${totalPages}</span>
+                            ${currentAdminPage < totalPages ? `<button class="btn btn-secondary btn-small" onclick="currentAdminPage++; renderAdminPanel()">Далее</button>` : ''}
+                        </div>
+                    ` : ''}
                 </div>
             </div>
         `;
+        return html;
     } catch (error) {
         console.error('Ошибка при загрузке заказов:', error);
         return '<p class="text-gray">Ошибка загрузки данных</p>';
     }
 }
 
-async function updateOrderStatus(orderId, newStatus) {
+async function renderAdminCategories() {
     try {
-        await apiRequest(`/orders/${orderId}/status`, {
-            method: 'PATCH',
-            body: JSON.stringify({ status: newStatus })
+        const categories = await apiRequest(`/admin/categories`);
+        
+        let html = `
+            <div class="card">
+                <div class="card-content">
+                    <div class="flex-between mb-4">
+                        <h2>Управление категориями (всего: ${categories.length})</h2>
+                        <button class="btn btn-primary" onclick="showAddCategoryForm()">${getIcon('plus')} Добавить категорию</button>
+                    </div>
+
+                    <div id="addCategoryForm" style="display: none; background: #f9fafb; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem;">
+                        <h3 class="mb-2">Новая категория</h3>
+                        <form onsubmit="saveAdminCategory(event)">
+                            <div class="flex gap-1">
+                                <input type="text" class="form-input flex-1" id="categoryName" placeholder="Название категории" required>
+                                <button type="submit" class="btn btn-primary">Добавить</button>
+                                <button type="button" class="btn btn-secondary" onclick="hideAddCategoryForm()">Отмена</button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <div class="grid grid-3">
+                        ${categories.map(category => `
+                            <div class="card">
+                                <div class="card-content">
+                                    <p style="font-weight: 600; margin-bottom: 0.5rem;">${category.name}</p>
+                                    <button class="btn btn-danger btn-small flex-1" onclick="deleteCategory('${category.id}')">${getIcon('trash')} Удалить</button>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+            </div>
+        `;
+        return html;
+    } catch (error) {
+        console.error('Ошибка при загрузке категорий:', error);
+        return '<p class="text-gray">Ошибка загрузки данных</p>';
+    }
+}
+
+function showAddCategoryForm() {
+    document.getElementById('addCategoryForm').style.display = 'block';
+}
+
+function hideAddCategoryForm() {
+    document.getElementById('addCategoryForm').style.display = 'none';
+}
+
+async function saveAdminCategory(e) {
+    e.preventDefault();
+
+    const categoryName = document.getElementById('categoryName').value;
+
+    try {
+        await apiRequest(`/admin/categories?category_name=${encodeURIComponent(categoryName)}`, {
+            method: 'POST'
+        });
+
+        hideAddCategoryForm();
+        document.getElementById('categoryName').value = '';
+        renderAdminPanel();
+        showToast('success', 'Категория добавлена');
+    } catch (error) {
+        showToast('error', 'Ошибка', error.message || 'Не удалось добавить категорию');
+        console.error('Ошибка при добавлении категории:', error);
+    }
+}
+
+async function deleteCategory(categoryId) {
+    if (!confirm('Удалить категорию?')) return;
+    
+    try {
+        await apiRequest(`/admin/categories/${categoryId}`, {
+            method: 'DELETE'
         });
         
-        showToast('success', 'Статус обновлен', `Статус заказа изменен на "${newStatus}"`);
+        renderAdminPanel();
+        showToast('success', 'Категория удалена');
     } catch (error) {
-        showToast('error', 'Ошибка', error.message || 'Не удалось обновить статус');
-        console.error('Ошибка при обновлении статуса заказа:', error);
+        showToast('error', 'Ошибка', error.message || 'Не удалось удалить категорию');
+        console.error('Ошибка при удалении категории:', error);
     }
 }
 
@@ -1783,9 +1872,6 @@ async function renderSupplierPanel() {
                                 <div style="flex: 1;">
                                     <div class="flex gap-1 mb-2" style="align-items: center;">
                                         <h3>${supplier.name}</h3>
-                                        <span class="badge ${supplier.approved ? 'badge-green' : 'badge-yellow'}">
-                                            ${supplier.approved ? 'Одобрена' : 'На модерации'}
-                                        </span>
                                     </div>
                                     <p class="text-gray mb-2">${supplier.location}</p>
                                     <p style="color: #374151;">${supplier.description}</p>
@@ -1876,7 +1962,6 @@ async function renderSupplierPanel() {
                                                     <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">${product.category}</p>
                                                 </div>
                                                 <div class="flex gap-1">
-                                                    <button class="btn btn-primary btn-small" onclick="editSupplierProduct('${product.id}')">${getIcon('edit')}</button>
                                                     <button class="btn btn-danger btn-small" onclick="deleteSupplierProduct('${product.id}')">${getIcon('trash')}</button>
                                                 </div>
                                             </div>
@@ -1922,10 +2007,8 @@ async function createSupplier(e) {
     try {
         await fetch(`${API_BASE_URL}/farms/applications`, {
             method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-            },
-            body: formData
+            body: formData,
+            credentials: 'include'
         });
 
         showToast('success', 'Заявка отправлена', 'Заявка на регистрацию фермы отправлена администратору');
@@ -1967,10 +2050,8 @@ async function saveSupplierPanelInfo(e) {
         if (supplier) {
             await fetch(`${API_BASE_URL}/farms/${supplier.id}`, {
                 method: 'PUT',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                },
-                body: formData
+                body: formData,
+                credentials: 'include'
             });
         }
 
@@ -2015,10 +2096,8 @@ async function saveSupplierProduct(e) {
             
             await fetch(`${API_BASE_URL}/products`, {
                 method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${localStorage.getItem('access_token')}`
-                },
-                body: formData
+                body: formData,
+                credentials: 'include'
             });
         }
 
@@ -2081,20 +2160,16 @@ document.addEventListener('DOMContentLoaded', function() {
                             password,
                             address
                         }),
-                        credentials: 'include'  // Включаем куки для регистрации
+                        credentials: 'include'
                     });
                     
                     if (!response.ok) {
                         const error = await response.json().catch(() => ({}));
-                        // Проверяем, является ли error.detail массивом или объектом
                         if (Array.isArray(error.detail)) {
-                            // Если это массив ошибок, объединяем их в строку
                             errorDiv.textContent = error.detail.map(err => err.msg || err.detail || 'Ошибка регистрации').join(', ');
                         } else if (typeof error.detail === 'object' && error.detail !== null) {
-                            // Если это объект, извлекаем сообщение
                             errorDiv.textContent = error.detail.msg || error.detail.message || error.detail || 'Ошибка регистрации: ' + response.statusText;
                         } else {
-                            // В противном случае используем строку напрямую
                             errorDiv.textContent = error.detail || 'Ошибка регистрации: ' + response.statusText;
                         }
                         errorDiv.style.display = 'block';
@@ -2111,28 +2186,22 @@ document.addEventListener('DOMContentLoaded', function() {
                         email,
                         password
                     }),
-                    credentials: 'include'  // Включаем куки для логина
+                    credentials: 'include'
                 });
                 
                 if (!response.ok) {
                     const error = await response.json().catch(() => ({}));
-                    // Проверяем, является ли error.detail массивом или объектом
                     if (Array.isArray(error.detail)) {
-                        // Если это массив ошибок, объединяем их в строку
                         errorDiv.textContent = error.detail.map(err => err.msg || err.detail || 'Неверный email или пароль').join(', ');
                     } else if (typeof error.detail === 'object' && error.detail !== null) {
-                        // Если это объект, извлекаем сообщение
                         errorDiv.textContent = error.detail.msg || error.detail.message || error.detail || 'Неверный email или пароль';
                     } else {
-                        // В противном случае используем строку напрямую
                         errorDiv.textContent = error.detail || 'Неверный email или пароль';
                     }
                     errorDiv.style.display = 'block';
                     return;
                 }
                 
-                // При успешном входе куки с токеном автоматически сохраняются браузером
-                // Проверяем аутентификацию и получаем информацию о пользователе
                 const userResponse = await apiRequest('/auth/me');
                 if (userResponse) {
                     currentUser = userResponse;
@@ -2154,12 +2223,9 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    // Проверяем аутентификацию при загрузке страницы
     checkAuth();
 
     async function checkAuth() {
-        // Делаем запрос к серверу для проверки аутентификации
-        // Сервер проверит наличие куки с токеном
         try {
             const user = await apiRequest('/auth/me');
             if (user) {
@@ -2167,8 +2233,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 renderNav();
             }
         } catch (error) {
-            // При ошибке аутентификации просто сбрасываем локальное состояние
-            // Не показываем сообщение об ошибке при загрузке страницы
             currentUser = null;
             renderNav();
         }
