@@ -25,14 +25,8 @@ class BaseRepository(Generic[ModelType, SchemaType]):
         return result.scalars().one_or_none()
      
     async def get_one_with_role(self, **filter_by) -> Optional[ModelType]:
-        from sqlalchemy.orm import selectinload
-        query = (
-            select(self.model)
-            .filter_by(**filter_by)
-            .options(selectinload(self.model.role))
-        )
-        result = await self.session.execute(query)
-        return result.scalars().one_or_none()
+        """Базовая реализация метода, может быть переопределена в наследниках"""
+        return await self.get_one(**filter_by)
     
     async def get_one_or_raise(self, **filter_by) -> ModelType:
         """Возвращает объект или вызывает исключение, если объект не найден"""

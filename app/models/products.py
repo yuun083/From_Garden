@@ -1,5 +1,5 @@
 from typing import Optional, TYPE_CHECKING
-from sqlalchemy import ForeignKey, String, Text, Float, Boolean
+from sqlalchemy import ForeignKey, String, Text, Float, Boolean, LargeBinary
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.database.database import Base
 
@@ -22,7 +22,7 @@ class Product(Base):
     quantity: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     in_stock: Mapped[bool] = mapped_column(Boolean, default=False)
     description: Mapped[Optional[str]] = mapped_column(Text)
-    image: Mapped[Optional[bytes]] = mapped_column()
+    image: Mapped[Optional[bytes]] = mapped_column(LargeBinary)
     
     category: Mapped["Category"] = relationship(back_populates="products")
     farm: Mapped["Farm"] = relationship(back_populates="products")

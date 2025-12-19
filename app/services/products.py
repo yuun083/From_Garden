@@ -33,7 +33,7 @@ class ProductService(BaseService):
         return SProductGet.model_validate(product, from_attributes=True)
     
     async def update_product(self, product_id: int, product_data: SProductUpdate, user_id: int):
-        product = await self.repository.get_one_with_role(id=product_id)
+        product = await self.repository.get_one(id=product_id)
         if not product:
             raise ProductNotFoundError
         
@@ -44,7 +44,7 @@ class ProductService(BaseService):
         return SProductGet.model_validate(updated, from_attributes=True)
     
     async def partial_update_product(self, product_id: int, product_data: SProductPartialUpdate, user_id: int):
-        product = await self.repository.get_one_with_role(id=product_id)
+        product = await self.repository.get_one(id=product_id)
         if not product:
             raise ProductNotFoundError
         
@@ -59,7 +59,7 @@ class ProductService(BaseService):
         return SProductGet.model_validate(updated, from_attributes=True)
     
     async def delete_product(self, product_id: int, user_id: int):
-        product = await self.repository.get_one_with_role(id=product_id)
+        product = await self.repository.get_one(id=product_id)
         if not product:
             raise ProductNotFoundError
         
@@ -69,7 +69,7 @@ class ProductService(BaseService):
         await self.repository.delete(product_id)
     
     async def _check_product_permission(self, product, user_id: int) -> bool:
-        user = await self.db.users.get_one_with_role(id=user_id)
+        user = await self.db.users.get_one(id=user_id)
         
         if not user:
             return False

@@ -88,6 +88,7 @@ async def update_order_status(
     status: str,
     db: DBDep,
     current_user: CurrentUserDep,
+    is_admin: IsAdminDep,
 ) -> dict[str, str]:
     try:
         await OrderService(db).update_order_status(order_id=order_id, status=status, user_id=current_user.id)

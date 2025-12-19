@@ -11,7 +11,7 @@ class OrderItemService(BaseService):
     async def get_order_items(self, order_id: int, user_id: int) -> list[SOrderItemGet]:
         order = await self.order_repository.get_one(id=order_id)
         if not order or order.user_id != user_id:
-            user = await self.db.users.get_one(id=user_id)
+            user = await self.db.users.get_one_with_role(id=user_id)
             if not user or user.role.name != "admin":
                 raise OrderItemNotYoursError
         
@@ -28,7 +28,7 @@ class OrderItemService(BaseService):
         
         order = await self.order_repository.get_one(id=order_id)
         if not order or order.user_id != user_id:
-            user = await self.db.users.get_one(id=user_id)
+            user = await self.db.users.get_one_with_role(id=user_id)
             if not user or user.role.name != "admin":
                 raise OrderItemNotYoursError
         
@@ -37,7 +37,7 @@ class OrderItemService(BaseService):
     async def add_order_item(self, order_id: int, item_data: SOrderItemCreate, user_id: int):
         order = await self.order_repository.get_one(id=order_id)
         if not order or order.user_id != user_id:
-            user = await self.db.users.get_one(id=user_id)
+            user = await self.db.users.get_one_with_role(id=user_id)
             if not user or user.role.name != "admin":
                 raise OrderItemNotYoursError
         
@@ -56,7 +56,7 @@ class OrderItemService(BaseService):
         
         order = await self.order_repository.get_one(id=order_id)
         if not order or order.user_id != user_id:
-            user = await self.db.users.get_one(id=user_id)
+            user = await self.db.users.get_one_with_role(id=user_id)
             if not user or user.role.name != "admin":
                 raise OrderItemNotYoursError
         
@@ -73,7 +73,7 @@ class OrderItemService(BaseService):
         
         order = await self.order_repository.get_one(id=order_id)
         if not order or order.user_id != user_id:
-            user = await self.db.users.get_one(id=user_id)
+            user = await self.db.users.get_one_with_role(id=user_id)
             if not user or user.role.name != "admin":
                 raise OrderItemNotYoursError
         

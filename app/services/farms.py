@@ -52,7 +52,7 @@ class FarmService(BaseService):
             raise FarmNotFoundError
         
         if farm.user_id != user_id:
-            user = await self.user_repository.get_one(id=user_id)
+            user = await self.user_repository.get_one_with_role(id=user_id)
             if not user or user.role.name != "admin":
                 raise FarmNotFoundError
         
@@ -65,9 +65,9 @@ class FarmService(BaseService):
             raise FarmNotFoundError
         
         if farm.user_id != user_id:
-            user = await self.user_repository.get_one(id=user_id)
+            user = await self.user_repository.get_one_with_role(id=user_id)
             if not user or user.role.name != "admin":
                 raise FarmNotFoundError
         
         await self.repository.delete(farm_id)
-        await self.db.commit()
+        await self.repository.session.commit()

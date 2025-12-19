@@ -81,7 +81,7 @@ class AuthService(BaseService):
         return access_token
     
     async def get_me(self, user_id: int) -> Optional[UserProfile]:
-        user = await self.db.users.get_one_with_role(id=user_id)
+        user = await self.db.users.get_one(id=user_id)
         if not user:
             raise UserNotFoundError
         

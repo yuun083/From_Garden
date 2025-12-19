@@ -23,7 +23,7 @@ class OrderService(BaseService):
             raise OrderNotFoundError
         
         if order.user_id != user_id:
-            user = await self.db.users.get_one(id=user_id)
+            user = await self.db.users.get_one_with_role(id=user_id)
             if not user or user.role.name != "admin":
                 raise OrderNotYoursError
         
@@ -73,7 +73,7 @@ class OrderService(BaseService):
             raise OrderNotFoundError
         
         if order.user_id != user_id:
-            user = await self.db.users.get_one(id=user_id)
+            user = await self.db.users.get_one_with_role(id=user_id)
             if not user or user.role.name != "admin":
                 raise OrderNotYoursError
         

@@ -15,8 +15,8 @@ class SOrderCreate(BaseModel):
 
     @validator('items')
     def validate_items(cls, v):
+        from .order_items import SOrderItemCreate
         for item in v:
-            from .order_items import SOrderItemCreate
             SOrderItemCreate(**item)
         return v
 
