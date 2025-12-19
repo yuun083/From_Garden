@@ -1351,13 +1351,16 @@ async function saveProfile(e) {
     }
 }
 
-function switchAdminTab(tab) {
-    currentAdminTab = tab;
+// ADMIN PANEL FUNCTIONS
+function switchAdminTab(tabName, event) {
+    event.preventDefault();
+    currentAdminTab = tabName;
     currentAdminPage = 1;
     
-    document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
-    const activeBtn = event.target;
-    if (activeBtn) activeBtn.classList.add('active');
+    document.querySelectorAll('.admin-tab-btn').forEach(btn => btn.classList.remove('active'));
+    if (event.target) {
+        event.target.classList.add('active');
+    }
     
     renderAdminPanel();
 }
@@ -1368,33 +1371,47 @@ async function renderAdminPanel() {
         return;
     }
 
-    let html = '';
+    const tabsHTML = `
+        <div style="display: flex; gap: 1rem; border-bottom: 1px solid #e5e7eb; margin-bottom: 2rem; flex-wrap: wrap;">
+            <button class="admin-tab-btn ${currentAdminTab === 'dashboard' ? 'active' : ''}" onclick="switchAdminTab('dashboard', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'dashboard' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'dashboard' ? '2px solid #16a34a' : 'none'};">Статистика</button>
+            <button class="admin-tab-btn ${currentAdminTab === 'users' ? 'active' : ''}" onclick="switchAdminTab('users', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'users' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'users' ? '2px solid #16a34a' : 'none'};">Пользователи</button>
+            <button class="admin-tab-btn ${currentAdminTab === 'suppliers' ? 'active' : ''}" onclick="switchAdminTab('suppliers', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'suppliers' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'suppliers' ? '2px solid #16a34a' : 'none'};">Поставщики</button>
+            <button class="admin-tab-btn ${currentAdminTab === 'products' ? 'active' : ''}" onclick="switchAdminTab('products', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'products' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'products' ? '2px solid #16a34a' : 'none'};">Продукты</button>
+            <button class="admin-tab-btn ${currentAdminTab === 'orders' ? 'active' : ''}" onclick="switchAdminTab('orders', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'orders' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'orders' ? '2px solid #16a34a' : 'none'};">Заказы</button>
+            <button class="admin-tab-btn ${currentAdminTab === 'reviews' ? 'active' : ''}" onclick="switchAdminTab('reviews', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'reviews' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'reviews' ? '2px solid #16a34a' : 'none'};">Отзывы</button>
+            <button class="admin-tab-btn ${currentAdminTab === 'categories' ? 'active' : ''}" onclick="switchAdminTab('categories', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'categories' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'categories' ? '2px solid #16a34a' : 'none'};">Категории</button>
+        </div>
+    `;
 
+    let contentHTML = '';
+    
     switch(currentAdminTab) {
         case 'dashboard':
-            html = await renderAdminDashboard();
+            contentHTML = await renderAdminDashboard();
             break;
         case 'users':
-            html = await renderAdminUsers();
-            break;
-        case 'products':
-            html = await renderAdminProducts();
+            contentHTML = await renderAdminUsers();
             break;
         case 'suppliers':
-            html = await renderAdminSuppliers();
+            contentHTML = await renderAdminSuppliers();
             break;
-        case 'reviews':
-            html = await renderAdminReviews();
+        case 'products':
+            contentHTML = await renderAdminProducts();
             break;
         case 'orders':
-            html = await renderAdminOrders();
+            contentHTML = await renderAdminOrders();
+            break;
+        case 'reviews':
+            contentHTML = await renderAdminReviews();
             break;
         case 'categories':
-            html = await renderAdminCategories();
+            contentHTML = await renderAdminCategories();
             break;
+        default:
+            contentHTML = '<p class="text-gray">Выберите раздел</p>';
     }
 
-    document.getElementById('adminContent').innerHTML = html;
+    document.getElementById('adminContent').innerHTML = tabsHTML + contentHTML;
 }
 
 async function renderAdminDashboard() {
@@ -1402,7 +1419,7 @@ async function renderAdminDashboard() {
         const stats = await apiRequest('/admin/dashboard');
         
         return `
-            <div class="grid grid-4 mb-4">
+            <div class="grid grid-3 mb-4">
                 <div class="card">
                     <div class="card-content">
                         <p class="text-gray mb-2">Всего пользователей</p>
@@ -1453,32 +1470,32 @@ async function renderAdminUsers() {
                 <div class="card-content">
                     <h2 class="mb-4">Управление пользователями (всего: ${total})</h2>
                     <div style="overflow-x: auto;">
-                        <table>
+                        <table style="width: 100%; border-collapse: collapse;">
                             <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Имя</th>
-                                    <th>Email</th>
-                                    <th>Роль</th>
-                                    <th>Адрес</th>
-                                    <th>Действия</th>
+                                <tr style="background: #f9fafb;">
+                                    <th style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left;">ID</th>
+                                    <th style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left;">Имя</th>
+                                    <th style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left;">Email</th>
+                                    <th style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left;">Роль</th>
+                                    <th style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left;">Адрес</th>
+                                    <th style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left;">Действия</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${users.map(user => `
-                                    <tr>
-                                        <td>${user.id}</td>
-                                        <td>${user.name}</td>
-                                        <td>${user.email}</td>
-                                        <td>
+                                    <tr style="border-bottom: 1px solid #e5e7eb;">
+                                        <td style="padding: 0.75rem;">${user.id}</td>
+                                        <td style="padding: 0.75rem;">${user.name}</td>
+                                        <td style="padding: 0.75rem;">${user.email}</td>
+                                        <td style="padding: 0.75rem;">
                                             <select class="form-input" style="padding: 0.5rem;" onchange="updateUserRole('${user.id}', this.value)">
                                                 <option value="customer" ${user.role === 'customer' ? 'selected' : ''}>Покупатель</option>
                                                 <option value="farmer" ${user.role === 'farmer' ? 'selected' : ''}>Поставщик</option>
                                                 <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Админ</option>
                                             </select>
                                         </td>
-                                        <td style="font-size: 0.875rem; color: #6b7280;">${user.address || ''}</td>
-                                        <td>
+                                        <td style="padding: 0.75rem; font-size: 0.875rem; color: #6b7280;">${user.address || ''}</td>
+                                        <td style="padding: 0.75rem;">
                                             <button class="btn btn-danger btn-small" onclick="deleteUser('${user.id}')">${getIcon('trash')}</button>
                                         </td>
                                     </tr>
@@ -1550,7 +1567,7 @@ async function renderAdminProducts() {
                             const supplier = suppliers.find(s => s.id === product.supplier_id);
                             return `
                                 <div class="card">
-                                    <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}" style="height: 150px;">
+                                    <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}" style="height: 150px; object-fit: cover;">
                                     <div class="card-content">
                                         <p style="font-weight: 600; margin-bottom: 0.25rem;">${product.name}</p>
                                         <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">${product.category}</p>
@@ -1735,24 +1752,24 @@ async function renderAdminOrders() {
                 <div class="card-content">
                     <h2 class="mb-4">Управление заказами (всего: ${total})</h2>
                     <div style="overflow-x: auto;">
-                        <table>
+                        <table style="width: 100%; border-collapse: collapse;">
                             <thead>
-                                <tr>
-                                    <th>ID</th>
-                                    <th>Покупатель</th>
-                                    <th>Сумма</th>
-                                    <th>Статус</th>
-                                    <th>Дата</th>
+                                <tr style="background: #f9fafb;">
+                                    <th style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left;">ID</th>
+                                    <th style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left;">Покупатель</th>
+                                    <th style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left;">Сумма</th>
+                                    <th style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left;">Статус</th>
+                                    <th style="padding: 0.75rem; border-bottom: 1px solid #e5e7eb; text-align: left;">Дата</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 ${orders.map(order => `
-                                    <tr>
-                                        <td>#${order.id}</td>
-                                        <td>${order.user_name || 'Неизвестно'}</td>
-                                        <td>${order.total} ₽</td>
-                                        <td>${order.status}</td>
-                                        <td>${new Date(order.created_at).toLocaleDateString('ru-RU')}</td>
+                                    <tr style="border-bottom: 1px solid #e5e7eb;">
+                                        <td style="padding: 0.75rem;">#${order.id}</td>
+                                        <td style="padding: 0.75rem;">${order.user_name || 'Неизвестно'}</td>
+                                        <td style="padding: 0.75rem;">${order.total} ₽</td>
+                                        <td style="padding: 0.75rem;">${order.status}</td>
+                                        <td style="padding: 0.75rem;">${new Date(order.created_at).toLocaleDateString('ru-RU')}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -1964,7 +1981,7 @@ async function renderSupplierPanel() {
                             <div class="grid grid-3">
                                 ${supplierProducts.map(product => `
                                     <div class="card">
-                                        <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}" style="height: 150px;">
+                                        <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}" style="height: 150px; object-fit: cover;">
                                         <div class="card-content">
                                             <div class="flex-between mb-1">
                                                 <div>
