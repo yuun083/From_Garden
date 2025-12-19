@@ -62,12 +62,7 @@ pip install -r requirements.txt
 ```
 
 
-5. Запустите инициализацию базы данных:
-```bash
-python init_db.py
-```
-
-6. Запустите приложение:
+4. Запустите приложение:
 ```bash
 python main.py
 ```
