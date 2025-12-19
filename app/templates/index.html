@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Прямо с грядки - Фермерские продукты</title>
+    <link rel="stylesheet" href="/static/css/index.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Подключение шрифта Comfortaa -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Comfortaa:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <!-- Шапка сайта -->
+    <header>
+        <div class="header-container">
+            <button class="logo" onclick="navigateTo('home')">
+                <!-- Логотип с возможностью замены -->
+                <img src="/static/images/logo.svg" alt="Прямо с грядки" class="logo-image"
+                     onerror="this.style.display='none'; document.querySelector('.logo-text').style.display='inline'">
+                <span class="logo-text">Прямо с грядки</span>
+            </button>
+
+            <nav id="mainNav">
+                <!-- Навигация будет добавлена через JS -->
+            </nav>
+
+            <!-- Мобильное меню -->
+            <button class="mobile-menu-btn" id="mobileMenuBtn">
+                <i class="fas fa-bars"></i>
+            </button>
+        </div>
+
+        <!-- Мобильное меню (выпадающий список) -->
+        <div class="mobile-menu" id="mobileMenu">
+            <!-- Контент будет добавлен через JS -->
+        </div>
+    </header>
+
+    <!-- Основной контент -->
+    <div class="container">
+        <!-- Главная страница с улучшенным дизайном -->
+        <div id="homePage" class="page active">
+            <div class="page-content">
+                <!-- Герой-секция -->
+                <div class="hero-section">
+                    <h1>Свежие фермерские продукты прямо с грядки</h1>
+                    <p class="hero-subtitle">Натуральные овощи, молочные продукты, мёд и многое другое от проверенных фермеров вашего региона</p>
+                    <div class="hero-stats">
+                        <div class="stat-item">
+                            <i class="fas fa-tractor"></i>
+                            <div>
+                                <span class="stat-number">20+</span>
+                                <span class="stat-label">фермеров</span>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-carrot"></i>
+                            <div>
+                                <span class="stat-number">150+</span>
+                                <span class="stat-label">продуктов</span>
+                            </div>
+                        </div>
+                        <div class="stat-item">
+                            <i class="fas fa-smile"></i>
+                            <div>
+                                <span class="stat-number">1000+</span>
+                                <span class="stat-label">довольных клиентов</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Лучшие фермы -->
+                <div class="featured-suppliers mb-4">
+                    <h2><i class="fas fa-crown"></i> Лучшие фермы месяца</h2>
+                    <p class="text-gray mb-2">Топовые поставщики по оценкам наших покупателей</p>
+                    <div id="featuredSuppliers" class="grid grid-3"></div>
+                </div>
+
+                <!-- Новинки -->
+                <div class="new-products mb-4">
+                    <h2><i class="fas fa-star"></i> Новинки</h2>
+                    <p class="text-gray mb-2">Самые свежие добавления в нашем каталоге</p>
+                    <div id="newProducts" class="grid grid-4"></div>
+                </div>
+
+                <!-- Все продукты -->
+                <div class="all-products">
+                    <h2><i class="fas fa-store"></i> Все продукты</h2>
+                    <p class="text-gray mb-2">Полный каталог фермерских продуктов</p>
+                    
+                    <div id="categoryFiltersHome" class="category-filters"></div>
+                    <div id="productsGridHome" class="grid grid-4"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Страница продуктов -->
+        <div id="productsPage" class="page">
+            <div class="page-content">
+                <h1><i class="fas fa-box"></i> Все продукты</h1>
+                <p class="text-gray mb-4">Полный каталог фермерских продуктов</p>
+                
+                <div id="categoryFilters" class="category-filters"></div>
+                <div id="productsGrid" class="grid grid-4"></div>
+            </div>
+        </div>
+
+        <!-- Страница поставщиков -->
+        <div id="suppliersPage" class="page">
+            <div class="page-content">
+                <h1><i class="fas fa-users"></i> Наши поставщики</h1>
+                <p class="text-gray mb-4">Познакомьтесь с фермерами, которые выращивают продукты для вас</p>
+                
+                <div id="suppliersGrid" class="grid grid-3"></div>
+            </div>
+        </div>
+
+        <!-- Страница детали поставщика -->
+        <div id="supplierDetailPage" class="page">
+            <div class="page-content">
+                <button class="btn btn-secondary mb-2" onclick="navigateTo('suppliers')"><i class="fas fa-arrow-left"></i> Назад к поставщикам</button>
+                <div id="supplierDetail"></div>
+            </div>
+        </div>
+	
+	
+	<!-- Добавим после страницы детали поставщика -->
+	<div id="productDetailPage" class="page">
+    		<div class="page-content product-detail-page">
+        		<button class="btn btn-secondary mb-4" onclick="navigateTo('products')">
+            			<i class="fas fa-arrow-left"></i> Назад к продуктам
+        		</button>
+        		<div id="productDetail"></div>
+    		</div>
+	</div>
+	
+	
+        <!-- Страница подписок -->
+        <div id="subscriptionsPage" class="page">
+            <div class="page-content">
+                <h1><i class="fas fa-calendar-alt"></i> Подписки на наборы</h1>
+                <p class="text-gray mb-4">Получайте свежие фермерские продукты регулярно по выгодной цене</p>
+                
+                <div class="info-box mb-4">
+                    <h3><i class="fas fa-gift"></i> Преимущества подписки:</h3>
+                    <ul class="features-list">
+                        <li><i class="fas fa-check text-green"></i> Экономия до 15% по сравнению с разовыми покупками</li>
+                        <li><i class="fas fa-check text-green"></i> Регулярная доставка - не нужно каждый раз делать заказ</li>
+                        <li><i class="fas fa-check text-green"></i> Свежесть гарантирована - продукты собраны в день доставки</li>
+                        <li><i class="fas fa-check text-green"></i> Персональный менеджер для решения любых вопросов</li>
+                    </ul>
+                </div>
+
+                <div id="subscriptionsGrid" class="grid grid-2"></div>
+                
+                <div id="activeSubscriptions" style="margin-top: 3rem;"></div>
+            </div>
+        </div>
+
+        <!-- Корзина -->
+        <div id="cartPage" class="page">
+            <div class="page-content">
+                <h1><i class="fas fa-shopping-cart"></i> Корзина</h1>
+                <div id="cartContent"></div>
+            </div>
+        </div>
+
+        <!-- Профиль -->
+        <div id="profilePage" class="page">
+            <div class="page-content">
+                <h1><i class="fas fa-user"></i> Профиль</h1>
+                <div id="profileContent"></div>
+            </div>
+        </div>
+
+        <!-- Админ-панель -->
+        <div id="adminPage" class="page">
+            <div class="page-content">
+                <button class="btn btn-secondary mb-2" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Назад</button>
+                <h1 style="color: #6b21a8;"><i class="fas fa-cog"></i> Админ-панель</h1>
+                
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchAdminTab('users')"><i class="fas fa-users"></i> Пользователи</button>
+                    <button class="tab-btn" onclick="switchAdminTab('products')"><i class="fas fa-box"></i> Продукты</button>
+                    <button class="tab-btn" onclick="switchAdminTab('suppliers')"><i class="fas fa-store"></i> Поставщики</button>
+                    <button class="tab-btn" onclick="switchAdminTab('reviews')"><i class="fas fa-comment"></i> Отзывы</button>
+                    <button class="tab-btn" onclick="switchAdminTab('orders')"><i class="fas fa-shopping-bag"></i> Заказы</button>
+                </div>
+
+                <div id="adminContent"></div>
+            </div>
+        </div>
+
+        <!-- Панель поставщика -->
+        <div id="supplierPanelPage" class="page">
+            <div class="page-content">
+                <button class="btn btn-secondary mb-2" onclick="navigateTo('home')"><i class="fas fa-arrow-left"></i> Назад</button>
+                <h1 style="color: #1e40af;"><i class="fas fa-store"></i> Панель поставщика</h1>
+                
+                <div id="supplierPanelContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Футер -->
+    <footer>
+        <div class="footer-content">
+            <div class="footer-section">
+                <h3><i class="fas fa-seedling"></i> Прямо с грядки</h3>
+                <p>Свежие фермерские продукты каждый день.</p>
+                <div class="social-links">
+                    <a href="#"><i class="fab fa-vk"></i></a>
+                    <a href="#"><i class="fab fa-telegram"></i></a>
+                    <a href="#"><i class="fab fa-whatsapp"></i></a>
+                    <a href="#"><i class="fab fa-instagram"></i></a>
+                </div>
+            </div>
+            
+            <div class="footer-section">
+                <h3>Контакты</h3>
+                <p><i class="fas fa-phone"></i> +7 (999) 123-45-67</p>
+                <p><i class="fas fa-envelope"></i> info@priamo-s-gryadki.ru</p>
+                <p><i class="fas fa-map-marker-alt"></i> Москва, ул. Фермерская, 15</p>
+            </div>
+            
+            <div class="footer-section">
+                <h3>Режим работы</h3>
+                <p><i class="fas fa-clock"></i> Ежедневно: 8:00 - 22:00</p>
+                <p><i class="fas fa-truck"></i> Доставка: 9:00 - 21:00</p>
+                <p><i class="fas fa-headset"></i> Поддержка: 24/7</p>
+            </div>
+            
+            <div class="footer-section">
+                <h3>Быстрые ссылки</h3>
+                <p><a href="#" onclick="navigateTo('products')">Продукты</a></p>
+                <p><a href="#" onclick="navigateTo('suppliers')">Фермы</a></p>
+                <p><a href="#" onclick="navigateTo('subscriptions')">Подписки</a></p>
+                <p><a href="#" onclick="openAuthModal()">Личный кабинет</a></p>
+            </div>
+        </div>
+        
+        <div class="footer-bottom">
+            <p>© 2024 Прямо с грядки. Свежие фермерские продукты каждый день.</p>
+            <p class="mt-1"><i class="fas fa-seedling text-green"></i> Поддерживаем местных фермеров</p>
+            <p class="mt-1"><i class="fas fa-heart" style="color: #ef4444;"></i> Сделано с любовью к натуральным продуктам</p>
+        </div>
+    </footer>
+
+    <!-- Контейнер для toast-уведомлений -->
+    <div id="toastContainer"></div>
+
+    <!-- Модальное окно авторизации -->
+    <div id="authModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="authTitle">Вход</h2>
+                <button class="modal-close" onclick="closeAuthModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <div class="flex gap-1 mb-4">
+                <button class="btn btn-primary flex-1" id="loginTabBtn" onclick="switchAuthTab('login')">Вход</button>
+                <button class="btn btn-secondary flex-1" id="registerTabBtn" onclick="switchAuthTab('register')">Регистрация</button>
+            </div>
+
+            <form id="authForm">
+                <div class="form-group">
+                    <label class="form-label"><i class="fas fa-envelope"></i> Email</label>
+                    <input type="email" class="form-input" id="authEmail" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label"><i class="fas fa-lock"></i> Пароль</label>
+                    <input type="password" class="form-input" id="authPassword" required>
+                </div>
+
+                <div id="registerFields" style="display: none;">
+                    <div class="form-group">
+                        <label class="form-label"><i class="fas fa-user"></i> Имя</label>
+                        <input type="text" class="form-input" id="authName">
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label"><i class="fas fa-map-marker-alt"></i> Адрес доставки</label>
+                        <input type="text" class="form-input" id="authAddress">
+                    </div>
+                </div>
+
+                <div id="authError" style="display: none; background: #fee2e2; color: #991b1b; padding: 0.75rem; border-radius: 0.5rem; margin-bottom: 1rem;"></div>
+
+                <button type="submit" class="btn btn-primary" id="authSubmitBtn" style="width: 100%;">Войти</button>
+            </form>
+
+            <div class="info-box mt-4">
+                <p style="margin-bottom: 0.5rem;"><strong><i class="fas fa-question-circle"></i> Нужна помощь?</strong></p>
+                <p style="font-size: 0.875rem;">Если у вас возникли проблемы со входом, свяжитесь с нашей поддержкой:</p>
+                <p style="font-size: 0.875rem; margin-top: 0.5rem;"><i class="fas fa-phone"></i> +7 (999) 123-45-67</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

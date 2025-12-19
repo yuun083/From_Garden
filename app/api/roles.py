@@ -1,0 +1,70 @@
+from fastapi import APIRouter
+
+from app.api.dependencies import DBDep, IsAdminDep
+from app.exceptions.roles import (
+    RoleAlreadyExistsError,
+    RoleAlreadyExistsHTTPError,
+    RoleNotFoundError,
+    RoleNotFoundHTTPError,
+)
+from app.schemes.roles import SRoleAdd, SRoleGet, SRoleGetWithRels
+from app.services.roles import RoleService
+
+router = APIRouter(prefix="/admin", tags=["Управление ролями"])
+
+@router.post("/roles", summary="Создание новой роли")
+async def create_new_role(
+    role_data: SRoleAdd,
+    db: DBDep,
+    is_admin: IsAdminDep,
+) -> dict[str, str]:
+    try:
+        await RoleService(db).create_role(role_data)
+    except RoleAlreadyExistsError:
+        raise RoleAlreadyExistsHTTPError
+    return {"status": "OK"}
+
+@router.get("/roles", summary="Получение списка ролей")
+async def get_all_roles(
+    db: DBDep,
+    is_admin: IsAdminDep,
+) -> list[SRoleGet]:
+    return await RoleService(db).get_roles()
+
+@router.get("/roles/{id}", summary="Получение конкретной роли")
+async def get_role(
+    db: DBDep,
+    id: int,
+    is_admin: IsAdminDep,
+) -> SRoleGetWithRels:
+    try:
+        return await RoleService(db).get_role(role_id=id)
+    except RoleNotFoundError:
+        raise RoleNotFoundHTTPError
+
+@router.put("/roles/{id}", summary="Изменение конкретной роли")
+async def update_role(
+    db: DBDep,
+    is_admin: IsAdminDep,
+    role_data: SRoleAdd,
+    id: int,
+) -> dict[str, str]:
+    try:
+        await RoleService(db).edit_role(role_id=id, role_data=role_data)
+    except RoleNotFoundError:
+        raise RoleNotFoundHTTPError
+    except RoleAlreadyExistsError:
+        raise RoleAlreadyExistsHTTPError
+    return {"status": "OK"}
+
+@router.delete("/roles/{id}", summary="Удаление конкретной роли")
+async def delete_role(
+    db: DBDep,
+    is_admin: IsAdminDep,
+    id: int,
+) -> dict[str, str]:
+    try:
+        await RoleService(db).delete_role(role_id=id)
+    except RoleNotFoundError:
+        raise RoleNotFoundHTTPError
+    return {"status": "OK"}
