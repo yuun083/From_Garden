@@ -748,7 +748,7 @@ async function renderSupplierDetail() {
                             <div class="review-item">
                                 <div class="flex-between mb-1">
                                     <div>
-                                        <p style="font-weight: 600;">${review.user_name}</p>
+                                        <p style="font-weight: 600;">${review.user_name || 'Анонимно'}</p>
                                         <p style="font-size: 0.875rem; color: #6b7280;">${new Date(review.created_at).toLocaleDateString('ru-RU')}</p>
                                     </div>
                                     <div class="stars">
@@ -1215,6 +1215,10 @@ async function renderProfile() {
         const orders = await apiRequest('/orders');
         const userSubscriptions = await apiRequest('/subscriptions/user');
 
+        const userName = userProfile && userProfile.name ? userProfile.name : 'Пользователь';
+        const userEmail = userProfile && userProfile.email ? userProfile.email : 'email@example.com';
+        const userAddress = userProfile && userProfile.address ? userProfile.address : 'Не указан';
+
         const html = `
             <div class="profile-layout" style="display: grid; grid-template-columns: 350px 1fr; gap: 2rem; margin-top: 2rem;">
                 <div>
@@ -1227,8 +1231,8 @@ async function renderProfile() {
                             </div>
 
                             <div class="text-center mb-4" id="profileInfo">
-                                <h2 style="margin-bottom: 0.25rem;">${userProfile.name}</h2>
-                                <p class="text-gray" style="font-size: 0.875rem;">${userProfile.email}</p>
+                                <h2 style="margin-bottom: 0.25rem;">${userName}</h2>
+                                <p class="text-gray" style="font-size: 0.875rem;">${userEmail}</p>
                                 <span class="badge ${isAdmin() ? 'badge-green' : isSupplier() ? 'badge-blue' : 'badge-yellow'}" style="margin-top: 0.5rem;">
                                     ${isCustomer() ? 'Покупатель' : isSupplier() ? 'Поставщик' : 'Администратор'}
                                 </span>
@@ -1239,7 +1243,7 @@ async function renderProfile() {
                                     <span style="color: #9ca3af;">${getIcon('mapPin')}</span>
                                     <div>
                                         <p style="font-size: 0.875rem; color: #6b7280;">Адрес</p>
-                                        <p>${userProfile.address || 'Не указан'}</p>
+                                        <p>${userAddress}</p>
                                     </div>
                                 </div>
                             </div>
@@ -1250,11 +1254,11 @@ async function renderProfile() {
                                 <form onsubmit="saveProfile(event)">
                                     <div class="form-group">
                                         <label class="form-label">Имя</label>
-                                        <input type="text" class="form-input" id="editName" value="${userProfile.name}">
+                                        <input type="text" class="form-input" id="editName" value="${userName}">
                                     </div>
                                     <div class="form-group">
                                         <label class="form-label">Адрес</label>
-                                        <input type="text" class="form-input" id="editAddress" value="${userProfile.address || ''}">
+                                        <input type="text" class="form-input" id="editAddress" value="${userAddress}">
                                     </div>
                                     <div class="flex gap-1">
                                         <button type="submit" class="btn btn-primary flex-1">Сохранить</button>
@@ -1349,6 +1353,12 @@ function switchAdminTab(tab) {
 }
 
 async function renderAdminPanel() {
+    // Проверка доступа к админ-панели
+    if (!isAdmin()) {
+        document.getElementById('adminContent').innerHTML = '<p class="text-gray">У вас нет доступа к админ-панели</p>';
+        return;
+    }
+    
     let html = '';
 
     switch(currentAdminTab) {
@@ -1394,7 +1404,7 @@ async function renderAdminUsers() {
                             <tbody>
                                 ${users.map(user => `
                                     <tr>
-                                        <td>${user.name}</td>
+                                        <td>${user.name || 'Не указано'}</td>
                                         <td>${user.email}</td>
                                         <td>
                                             <select class="form-input" style="padding: 0.5rem;" onchange="updateUserRole('${user.id}', this.value)">
@@ -1544,7 +1554,8 @@ async function saveAdminProduct(e) {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
-            body: formData
+            body: formData,
+            credentials: 'include'
         });
 
         hideAddProductForm();
@@ -1655,7 +1666,7 @@ async function renderAdminReviews() {
                             <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;">
                                 <div class="flex-between mb-1">
                                     <div>
-                                        <p style="font-weight: 600;">${review.user_name}</p>
+                                        <p style="font-weight: 600;">${review.user_name || 'Анонимно'}</p>
                                         <p style="font-size: 0.875rem; color: #6b7280;">
                                             ${new Date(review.created_at).toLocaleDateString('ru-RU')}
                                         </p>
@@ -1764,6 +1775,12 @@ async function updateOrderStatus(orderId, newStatus) {
 }
 
 async function renderSupplierPanel() {
+    // Проверка доступа к панели поставщика
+    if (!isSupplier()) {
+        document.getElementById('supplierPanelContent').innerHTML = '<p class="text-gray">У вас нет доступа к панели поставщика</p>';
+        return;
+    }
+    
     try {
         const suppliers = await apiRequest('/farms');
         const supplier = suppliers.find(s => s.user_id === currentUser.id);
@@ -1925,7 +1942,8 @@ async function createSupplier(e) {
             headers: {
                 'Authorization': `Bearer ${localStorage.getItem('access_token')}`
             },
-            body: formData
+            body: formData,
+            credentials: 'include'
         });
 
         showToast('success', 'Заявка отправлена', 'Заявка на регистрацию фермы отправлена администратору');
@@ -1970,7 +1988,8 @@ async function saveSupplierPanelInfo(e) {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('access_token')}`
                 },
-                body: formData
+                body: formData,
+                credentials: 'include'
             });
         }
 
@@ -2018,7 +2037,8 @@ async function saveSupplierProduct(e) {
                 headers: {
                     'Authorization': `Bearer ${localStorage.getItem('access_token')}`
                 },
-                body: formData
+                body: formData,
+                credentials: 'include'
             });
         }
 
@@ -2081,7 +2101,7 @@ document.addEventListener('DOMContentLoaded', function() {
                             password,
                             address
                         }),
-                        credentials: 'include'  // Включаем куки для регистрации
+                        credentials: 'include'
                     });
                     
                     if (!response.ok) {
@@ -2111,7 +2131,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         email,
                         password
                     }),
-                    credentials: 'include'  // Включаем куки для логина
+                    credentials: 'include'
                 });
                 
                 if (!response.ok) {
@@ -2140,8 +2160,18 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 closeAuthModal();
                 renderNav();
-                navigateTo('home');
-                showToast('success', 'Добро пожаловать!');
+                
+                // 🎯 РАЗГРАНИЧЕНИЕ РОЛЕЙ ПОСЛЕ АВТОРИЗАЦИИ
+                if (isAdmin()) {
+                    navigateTo('admin');
+                    showToast('success', 'Добро пожаловать, администратор!');
+                } else if (isSupplier()) {
+                    navigateTo('supplierPanel');
+                    showToast('success', 'Добро пожаловать, фермер!');
+                } else {
+                    navigateTo('home');
+                    showToast('success', 'Добро пожаловать!');
+                }
             } catch (error) {
                 console.error('Ошибка авторизации:', error);
                 if (error.message.includes('Failed to fetch')) {
