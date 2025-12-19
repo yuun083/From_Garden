@@ -13,13 +13,14 @@ from app.api.orders import router as orders_router
 from app.api.order_items import router as order_items_router
 from app.api.reviews import router as reviews_router
 from app.api.subscriptions import router as subscriptions_router
+from app.api.web import router as web_router
 
 
 app = FastAPI(title="Прямо с грядки", version="1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:8000", "http://localhost:8000", "http://127.0.0.1:8002", "http://localhost:8002"],  
+    allow_origins=["http://127.0.0.1:8000", "http://localhost:8000", "http://127.0.0.1:8002", "http://localhost:8002"],  # Указываем конкретные домены
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -38,10 +39,11 @@ app.include_router(orders_router)
 app.include_router(order_items_router)
 app.include_router(reviews_router)
 app.include_router(subscriptions_router)
+app.include_router(web_router)
 
 @app.get("/")
 async def root(request: Request):
     return templates.TemplateResponse(name="index.html", context={"request": request})
 
 if __name__ == "__main__":
-    uvicorn.run(app=app)
+    uvicorn.run(app=app, host="127.0.0.1", port=8002)

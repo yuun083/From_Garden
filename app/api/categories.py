@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.dependencies import DBDep, IsAdminDep
+from app.api.dependencies import DBDep, IsAdminDep, CurrentUserDep
 from app.exceptions.categories import (
     CategoryNotFoundError,
     CategoryNotFoundHTTPError,

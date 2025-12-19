@@ -1,9 +1,11 @@
 from fastapi import APIRouter
 
-from app.api.dependencies import DBDep, IsFarmerOrAdminDep
+from app.api.dependencies import DBDep, CurrentUserDep, IsFarmerOrAdminDep
 from app.exceptions.products import (
     ProductNotFoundError,
     ProductNotFoundHTTPError,
+    ProductNotInStockError,
+    ProductNotInStockHTTPError,
     ProductNotYoursError,
     ProductNotYoursHTTPError,
 )

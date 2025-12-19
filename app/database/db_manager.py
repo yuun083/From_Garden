@@ -1,3 +1,4 @@
+from app.database.database import async_session_maker
 from app.repositories.roles import RolesRepository
 from app.repositories.users import UsersRepository
 from app.repositories.categories import CategoryRepository

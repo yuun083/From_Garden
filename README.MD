@@ -1,5 +1,3 @@
-# Таран ИСП-24-1
-
 # Прямо с грядки - Фермерские продукты
 
 ## Описание проекта
@@ -64,6 +62,11 @@ pip install -r requirements.txt
 ```
 
 
+5. Запустите инициализацию базы данных:
+```bash
+python init_db.py
+```
+
 6. Запустите приложение:
 ```bash
 python main.py
@@ -114,3 +117,6 @@ alembic revision --autogenerate -m "Описание миграции"
 alembic upgrade head
 ```
 
+## Авторы
+
+Таран ИСП-24-1

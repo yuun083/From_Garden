@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 import jwt
 from typing import Optional
 
-from app.config import settings
+
 from app.exceptions.auth import (
     UserAlreadyExistsError,
     UserNotFoundError,
@@ -12,10 +12,14 @@ from app.exceptions.auth import (
     PasswordTooLongError,
     PasswordTooShortError
 )
+from app.models.users import User
+from app.repositories.users import UsersRepository
 from app.schemes.users import SUserAddRequest, UserAuth, UserProfile
 from app.services.base import BaseService
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
+from app.config import settings
 
 class AuthService(BaseService):
     def __init__(self, db_manager):
@@ -98,7 +102,7 @@ class AuthService(BaseService):
         """Обновить данные пользователя"""
         try:
             await self.user_repository.update(user_id, update_data)
-        except Exception:
+        except Exception as e:
             raise
 
 
@@ -135,5 +139,5 @@ class AuthService(BaseService):
             await self.user_repository.session.commit()
             return True
             
-        except Exception:
+        except Exception as e:
             raise

@@ -1,4 +1,5 @@
-from fastapi import APIRouter
+from typing import Annotated
+from fastapi import APIRouter, Depends
 
 from app.api.dependencies import DBDep, CurrentUserDep, IsAdminDep
 from app.exceptions.orders import (
