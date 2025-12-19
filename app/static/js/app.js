@@ -1,23 +1,6 @@
 const API_BASE_URL = 'http://127.0.0.1:8002';
 
 let currentUser = null;
-
-function isAdmin() {
-    return currentUser && currentUser.role === 'admin';
-}
-
-function isSupplier() {
-    return currentUser && currentUser.role === 'farmer';
-}
-
-function isCustomer() {
-    return currentUser && currentUser.role === 'customer';
-}
-
-function checkAdminAccess() {
-    return isAdmin();
-}
-
 let currentPage = 'home';
 let selectedCategory = 'Все';
 let selectedSupplierId = null;
@@ -25,9 +8,21 @@ let selectedProductId = null;
 let currentAdminTab = 'dashboard';
 let authMode = 'login';
 let currentRating = 5;
-let currentProductRating = 5;
 let currentAdminPage = 1;
 let adminItemsPerPage = 10;
+let mobileMenuOpen = false;
+
+function isAdmin() {
+    return currentUser && currentUser.role === 'admin';
+}
+
+function isFarmer() {
+    return currentUser && currentUser.role === 'farmer';
+}
+
+function isCustomer() {
+    return currentUser && currentUser.role === 'customer';
+}
 
 function getIcon(name) {
     const iconMap = {
@@ -37,14 +32,11 @@ function getIcon(name) {
         calendar: '<i class="fas fa-calendar-alt"></i>',
         shoppingCart: '<i class="fas fa-shopping-cart"></i>',
         user: '<i class="fas fa-user"></i>',
-        settings: '<i class="fas fa-cog"></i>',
         store: '<i class="fas fa-store"></i>',
         logout: '<i class="fas fa-sign-out-alt"></i>',
         star: '<i class="fas fa-star" style="color: #fbbf24;"></i>',
-        starEmpty: '<i class="far fa-star" style="color: #fbbf24;"></i>',
         check: '<i class="fas fa-check"></i>',
         x: '<i class="fas fa-times"></i>',
-        alert: '<i class="fas fa-exclamation-circle"></i>',
         truck: '<i class="fas fa-truck"></i>',
         clock: '<i class="fas fa-clock"></i>',
         mapPin: '<i class="fas fa-map-marker-alt"></i>',
@@ -53,16 +45,7 @@ function getIcon(name) {
         plus: '<i class="fas fa-plus"></i>',
         minus: '<i class="fas fa-minus"></i>',
         info: '<i class="fas fa-info-circle"></i>',
-        arrowLeft: '<i class="fas fa-arrow-left"></i>',
-        eye: '<i class="fas fa-eye"></i>',
-        messageCircle: '<i class="far fa-comment-alt"></i>',
         crown: '<i class="fas fa-crown"></i>',
-        tractor: '<i class="fas fa-tractor"></i>',
-        carrot: '<i class="fas fa-carrot"></i>',
-        smile: '<i class="fas fa-smile"></i>',
-        seed: '<i class="fas fa-seedling"></i>',
-        heart: '<i class="fas fa-heart"></i>',
-        share: '<i class="fas fa-share"></i>',
     };
     
     return iconMap[name] || '';
@@ -74,72 +57,68 @@ async function apiRequest(endpoint, options = {}) {
         ...options.headers
     };
     
-    // Основная аутентификация происходит через куки, но оставим возможность
-    // использовать заголовок Authorization, если токен доступен в localStorage
-    const token = localStorage.getItem('access_token');
-    if (token) {
-        headers['Authorization'] = `Bearer ${token}`;
-    }
-    
-    // Используем куки для аутентификации, как задумано на сервере
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+    const config = {
         ...options,
         headers,
-        credentials: 'include' // Включаем куки в запросы
-    });
+        credentials: 'include'
+    };
     
-    if (response.status === 401) {
-        // Очищаем данные пользователя при 401 ошибке
-        // Удаляем токен из localStorage, если он там есть
-        localStorage.removeItem('access_token');
-        currentUser = null;
-        renderNav();
-        // Показываем сообщение об ошибке только если это не проверка аутентификации при загрузке страницы
-        if (endpoint !== '/auth/me') {
-            showToast('error', 'Сессия истекла', 'Пожалуйста, войдите снова');
-        }
-        return null;
+    if (config.body && typeof config.body === 'object' && !(config.body instanceof FormData)) {
+        config.body = JSON.stringify(config.body);
     }
-
-    if (response.status === 403) {
-        // Доступ запрещен - недостаточно прав
-        if (endpoint.includes('/admin/')) {
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+        
+        if (response.status === 401) {
             currentUser = null;
             renderNav();
-            navigateTo('home');
-            showToast('error', 'Доступ запрещен', 'Требуются права администратора');
+            if (endpoint !== '/auth/me') {
+                showToast('error', 'Сессия истекла', 'Пожалуйста, войдите снова');
+            }
+            return null;
         }
-        return null;
-    }
 
-    
-    if (!response.ok) {
-        const error = await response.json().catch(() => ({}));
-        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        
-        // Проверяем, является ли error.detail массивом или объектом
-        if (Array.isArray(error.detail)) {
-            // Если это массив ошибок, объединяем их в строку
-            errorMessage = error.detail.map(err => err.msg || err.detail || errorMessage).join(', ');
-        } else if (typeof error.detail === 'object' && error.detail !== null) {
-            // Если это объект, извлекаем сообщение
-            errorMessage = error.detail.msg || error.detail.message || error.detail || errorMessage;
-        } else {
-            // В противном случае используем строку напрямую
-            errorMessage = error.detail || errorMessage;
+        if (response.status === 403) {
+            if (endpoint.includes('/admin/')) {
+                navigateTo('home');
+                showToast('error', 'Доступ запрещен', 'Требуются права администратора');
+            }
+            return null;
+        }
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            
+            if (error.detail) {
+                if (Array.isArray(error.detail)) {
+                    errorMessage = error.detail.map(err => err.msg || err.detail || errorMessage).join(', ');
+                } else if (typeof error.detail === 'object') {
+                    errorMessage = error.detail.msg || error.detail.message || error.detail || errorMessage;
+                } else {
+                    errorMessage = error.detail || errorMessage;
+                }
+            }
+            
+            throw new Error(errorMessage);
         }
         
-        throw new Error(errorMessage);
+        if (response.status === 204 || response.headers.get('content-length') === '0') {
+            return null;
+        }
+        
+        return await response.json();
+    } catch (error) {
+        if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+            showToast('error', 'Ошибка соединения', 'Не удалось подключиться к серверу');
+        } else {
+            throw error;
+        }
     }
-    
-    if (response.status === 204) {
-        return null;
-    }
-    
-    return await response.json();
 }
 
-function showToast(type, title, message) {
+function showToast(type, title, message = '') {
     const container = document.getElementById('toastContainer');
     if (!container) return;
     
@@ -172,60 +151,72 @@ function closeToast(toastId) {
     const toast = document.getElementById(toastId);
     if (toast) {
         toast.classList.add('removing');
-        setTimeout(() => {
-            if (toast.parentNode) {
-                toast.remove();
-            }
-        }, 300);
+        setTimeout(() => toast.remove(), 300);
     }
 }
 
-function toggleMobileMenu() {
-    const mobileMenu = document.getElementById('mobileMenu');
-    const menuBtn = document.getElementById('mobileMenuBtn');
-    
-    mobileMenu.classList.toggle('active');
-    menuBtn.innerHTML = mobileMenu.classList.contains('active') 
-        ? '<i class="fas fa-times"></i>' 
-        : '<i class="fas fa-bars"></i>';
-    
-    if (event) event.stopPropagation();
-}
 
-document.addEventListener('click', function(e) {
+
+function closeMobileMenu() {
     const mobileMenu = document.getElementById('mobileMenu');
     const menuBtn = document.getElementById('mobileMenuBtn');
     
-    if (mobileMenu && mobileMenu.classList.contains('active') && 
-        !mobileMenu.contains(e.target) && 
-        !menuBtn.contains(e.target)) {
+    mobileMenuOpen = false;
+    
+    if (mobileMenu) {
         mobileMenu.classList.remove('active');
+    }
+    if (menuBtn) {
         menuBtn.innerHTML = '<i class="fas fa-bars"></i>';
     }
-});
+}
+
+
+
+function toggleMobileMenu(event) {
+    if (event) event.stopPropagation();
+    
+    const mobileMenu = document.getElementById('mobileMenu');
+    const menuBtn = document.getElementById('mobileMenuBtn');
+    
+    mobileMenuOpen = !mobileMenuOpen;
+    
+    if (mobileMenu) {
+        if (mobileMenuOpen) {
+            mobileMenu.classList.add('active');
+            if (menuBtn) menuBtn.innerHTML = '<i class="fas fa-times"></i>';
+        } else {
+            mobileMenu.classList.remove('active');
+            if (menuBtn) menuBtn.innerHTML = '<i class="fas fa-bars"></i>';
+        }
+    }
+}
+
+ document.addEventListener('click', function(e) {
+        const mobileMenu = document.getElementById('mobileMenu');
+        const menuBtn = document.getElementById('mobileMenuBtn');
+        
+        if (mobileMenuOpen && mobileMenu && menuBtn) {
+            if (!mobileMenu.contains(e.target) && !menuBtn.contains(e.target)) {
+                closeMobileMenu();
+            }
+        }
+    });
 
 function navigateTo(page, data) {
     currentPage = page;
     
-    const mobileMenu = document.getElementById('mobileMenu');
-    const menuBtn = document.getElementById('mobileMenuBtn');
-    if (mobileMenu) {
-        mobileMenu.classList.remove('active');
-        menuBtn.innerHTML = '<i class="fas fa-bars"></i>';
-    }
+    // Закрываем мобильное меню при навигации
+    closeMobileMenu();
     
     document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
     
     const pageElement = document.getElementById(page + 'Page');
-    if (pageElement) {
-        pageElement.classList.add('active');
-    }
-
-    document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+    if (pageElement) pageElement.classList.add('active');
+    
     const activeBtn = document.querySelector(`[onclick*="${page}"]`);
-    if (activeBtn) {
-        activeBtn.classList.add('active');
-    }
+    if (activeBtn) activeBtn.classList.add('active');
 
     switch(page) {
         case 'home':
@@ -270,19 +261,14 @@ async function renderNav() {
     const mobileMenu = document.getElementById('mobileMenu');
     
     if (!currentUser) {
-        nav.innerHTML = `
+        const navHTML = `
             <button class="nav-btn ${currentPage === 'products' ? 'active' : ''}" onclick="navigateTo('products')">${getIcon('package')} Продукты</button>
             <button class="nav-btn ${currentPage === 'suppliers' ? 'active' : ''}" onclick="navigateTo('suppliers')">${getIcon('users')} Поставщики</button>
             <button class="nav-btn auth-btn" onclick="openAuthModal()">Войти / Регистрация</button>
         `;
         
-        if (mobileMenu) {
-            mobileMenu.innerHTML = `
-                <button class="nav-btn ${currentPage === 'products' ? 'active' : ''}" onclick="navigateTo('products')">${getIcon('package')} Продукты</button>
-                <button class="nav-btn ${currentPage === 'suppliers' ? 'active' : ''}" onclick="navigateTo('suppliers')">${getIcon('users')} Поставщики</button>
-                <button class="nav-btn auth-btn" onclick="openAuthModal()">Войти / Регистрация</button>
-            `;
-        }
+        if (nav) nav.innerHTML = navHTML;
+        if (mobileMenu) mobileMenu.innerHTML = navHTML;
         return;
     }
 
@@ -297,48 +283,30 @@ async function renderNav() {
     }
     
     let navHTML = `
-    <button class="nav-btn ${currentPage === 'products' ? 'active' : ''}" onclick="navigateTo('products')">${getIcon('package')} Продукты</button>
-    <button class="nav-btn ${currentPage === 'suppliers' ? 'active' : ''}" onclick="navigateTo('suppliers')">${getIcon('users')} Поставщики</button>
-    <button class="nav-btn ${currentPage === 'subscriptions' ? 'active' : ''}" onclick="navigateTo('subscriptions')">${getIcon('calendar')} Подписки</button>
-    <div style="position: relative;">
-        <button class="nav-btn ${currentPage === 'cart' ? 'active' : ''}" onclick="navigateTo('cart')">
-            ${getIcon('shoppingCart')} Корзина
-        </button>
-        ${cartCount > 0 ? `<span class="cart-badge">${cartCount}</span>` : ''}
-    </div>
-    <button class="nav-btn ${currentPage === 'profile' ? 'active' : ''}" onclick="navigateTo('profile')">${getIcon('user')} Профиль</button>
-`;
-
-    let mobileNavHTML = `
-    <button class="nav-btn ${currentPage === 'products' ? 'active' : ''}" onclick="navigateTo('products')">${getIcon('package')} Продукты</button>
-    <button class="nav-btn ${currentPage === 'suppliers' ? 'active' : ''}" onclick="navigateTo('suppliers')">${getIcon('users')} Поставщики</button>
-    <button class="nav-btn ${currentPage === 'subscriptions' ? 'active' : ''}" onclick="navigateTo('subscriptions')">${getIcon('calendar')} Подписки</button>
-    <div style="position: relative;">
-        <button class="nav-btn ${currentPage === 'cart' ? 'active' : ''}" onclick="navigateTo('cart')">
-            ${getIcon('shoppingCart')} Корзина
-        </button>
-        ${cartCount > 0 ? `<span class="cart-badge">${cartCount}</span>` : ''}
-    </div>
-    <button class="nav-btn ${currentPage === 'profile' ? 'active' : ''}" onclick="navigateTo('profile')">${getIcon('user')} Профиль</button>
-`;
+        <button class="nav-btn ${currentPage === 'products' ? 'active' : ''}" onclick="navigateTo('products')">${getIcon('package')} Продукты</button>
+        <button class="nav-btn ${currentPage === 'suppliers' ? 'active' : ''}" onclick="navigateTo('suppliers')">${getIcon('users')} Поставщики</button>
+        <button class="nav-btn ${currentPage === 'subscriptions' ? 'active' : ''}" onclick="navigateTo('subscriptions')">${getIcon('calendar')} Подписки</button>
+        <div style="position: relative;">
+            <button class="nav-btn ${currentPage === 'cart' ? 'active' : ''}" onclick="navigateTo('cart')">
+                ${getIcon('shoppingCart')} Корзина
+            </button>
+            ${cartCount > 0 ? `<span class="cart-badge">${cartCount}</span>` : ''}
+        </div>
+        <button class="nav-btn ${currentPage === 'profile' ? 'active' : ''}" onclick="navigateTo('profile')">${getIcon('user')} Профиль</button>
+    `;
 
     if (isAdmin()) {
-    navHTML += `<button class="nav-btn admin-btn ${currentPage === 'admin' ? 'active' : ''}" onclick="navigateTo('admin')">${getIcon('crown')} Админ</button>`;
-    mobileNavHTML += `<button class="nav-btn admin-btn ${currentPage === 'admin' ? 'active' : ''}" onclick="navigateTo('admin')">${getIcon('crown')} Админ</button>`;
+        navHTML += `<button class="nav-btn admin-btn ${currentPage === 'admin' ? 'active' : ''}" onclick="navigateTo('admin')">${getIcon('crown')} Админ</button>`;
     }
 
-    if (isSupplier()) {
+    if (isFarmer()) {
         navHTML += `<button class="nav-btn supplier-btn" onclick="navigateTo('supplierPanel')">${getIcon('store')} Моя ферма</button>`;
-        mobileNavHTML += `<button class="nav-btn supplier-btn" onclick="navigateTo('supplierPanel')">${getIcon('store')} Моя ферма</button>`;
     }
 
     navHTML += `<button class="nav-btn logout-btn" onclick="logout()">${getIcon('logout')} Выход</button>`;
-    mobileNavHTML += `<button class="nav-btn logout-btn" onclick="logout()">${getIcon('logout')} Выход</button>`;
 
-    nav.innerHTML = navHTML;
-    if (mobileMenu) {
-        mobileMenu.innerHTML = mobileNavHTML;
-    }
+    if (nav) nav.innerHTML = navHTML;
+    if (mobileMenu) mobileMenu.innerHTML = navHTML;
 }
 
 async function getProductInCartCount(productId) {
@@ -364,40 +332,34 @@ function openAuthModal() {
 function closeAuthModal() {
     document.getElementById('authModal').classList.remove('active');
     document.getElementById('authForm').reset();
-    document.getElementById('authError').style.display = 'none';
+    const errorDiv = document.getElementById('authError');
+    if (errorDiv) errorDiv.style.display = 'none';
 }
 
 function switchAuthTab(mode) {
     authMode = mode;
     const isLogin = mode === 'login';
     
-    document.getElementById('loginTabBtn').className = isLogin ? 'btn btn-primary flex-1' : 'btn btn-secondary flex-1';
-    document.getElementById('registerTabBtn').className = isLogin ? 'btn btn-secondary flex-1' : 'btn btn-primary flex-1';
-    document.getElementById('authTitle').textContent = isLogin ? 'Вход' : 'Регистрация';
-    document.getElementById('authSubmitBtn').textContent = isLogin ? 'Войти' : 'Зарегистрироваться';
-    document.getElementById('registerFields').style.display = isLogin ? 'none' : 'block';
+    const loginBtn = document.getElementById('loginTabBtn');
+    const registerBtn = document.getElementById('registerTabBtn');
+    const authTitle = document.getElementById('authTitle');
+    const authSubmitBtn = document.getElementById('authSubmitBtn');
+    const registerFields = document.getElementById('registerFields');
     
-    if (!isLogin) {
-        document.getElementById('authName').required = true;
-        document.getElementById('authAddress').required = true;
-    } else {
-        document.getElementById('authName').required = false;
-        document.getElementById('authAddress').required = false;
-    }
+    if (loginBtn) loginBtn.className = isLogin ? 'btn btn-primary flex-1' : 'btn btn-secondary flex-1';
+    if (registerBtn) registerBtn.className = isLogin ? 'btn btn-secondary flex-1' : 'btn btn-primary flex-1';
+    if (authTitle) authTitle.textContent = isLogin ? 'Вход' : 'Регистрация';
+    if (authSubmitBtn) authSubmitBtn.textContent = isLogin ? 'Войти' : 'Зарегистрироваться';
+    if (registerFields) registerFields.style.display = isLogin ? 'none' : 'block';
 }
 
 async function logout() {
     try {
-        // Выполняем logout на сервере
         await apiRequest('/auth/logout', { method: 'POST' });
     } catch (error) {
         console.error('Ошибка при выходе:', error);
-        // Даже если запрос к серверу не удался, удаляем токен из локального хранилища
-        showToast('error', 'Ошибка', error.message || 'Не удалось выйти из системы');
     }
     
-    // Удаляем токен из localStorage
-    localStorage.removeItem('access_token');
     currentUser = null;
     renderNav();
     navigateTo('home');
@@ -405,14 +367,20 @@ async function logout() {
 }
 
 async function renderHomePage() {
-    await renderFeaturedSuppliers();
-    await renderNewProducts();
-    await renderHomeProducts();
+    try {
+        await renderFeaturedSuppliers();
+        await renderNewProducts();
+        await renderHomeProducts();
+    } catch (error) {
+        console.error('Ошибка при загрузке главной страницы:', error);
+    }
 }
 
 async function renderFeaturedSuppliers() {
     try {
         const suppliers = await apiRequest('/farms');
+        if (!suppliers) return;
+        
         const featuredSuppliers = suppliers.filter(s => s.featured).slice(0, 3);
         
         const suppliersHTML = featuredSuppliers.map(supplier => `
@@ -428,7 +396,7 @@ async function renderFeaturedSuppliers() {
                             </div>
                         ` : ''}
                     </div>
-                    <p class="text-gray" style="font-size: 0.875rem; margin-bottom: 0.75rem;">${supplier.description.substring(0, 100)}...</p>
+                    <p class="text-gray" style="font-size: 0.875rem; margin-bottom: 0.75rem;">${supplier.description?.substring(0, 100) || ''}...</p>
                     <p class="text-gray" style="font-size: 0.875rem;">${getIcon('mapPin')} ${supplier.location}</p>
                 </div>
             </div>
@@ -444,6 +412,8 @@ async function renderFeaturedSuppliers() {
 async function renderNewProducts() {
     try {
         const products = await apiRequest('/products');
+        if (!products) return;
+        
         const newProducts = [...products].reverse().slice(0, 4);
         
         const productsHTML = await Promise.all(newProducts.map(async (product) => {
@@ -484,6 +454,8 @@ async function renderHomeProducts() {
         const products = await apiRequest('/products');
         const categories = await apiRequest('/categories');
         
+        if (!products || !categories) return;
+        
         const categoriesList = ['Все', ...categories.map(c => c.name)];
         
         const filtersHTML = categoriesList.map(cat => 
@@ -510,7 +482,7 @@ async function renderHomeProducts() {
                             <span class="badge badge-green">${product.category}</span>
                         </div>
                         <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">${product.name}</h3>
-                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${product.description}</p>
+                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${product.description || ''}</p>
                         <div class="flex-between">
                             <div>
                                 <span class="product-price">${product.price} ₽</span>
@@ -545,6 +517,8 @@ async function renderProducts() {
         const products = await apiRequest('/products');
         const categories = await apiRequest('/categories');
         
+        if (!products || !categories) return;
+        
         const categoriesList = ['Все', ...categories.map(c => c.name)];
         
         const filtersHTML = categoriesList.map(cat => 
@@ -569,7 +543,7 @@ async function renderProducts() {
                             <span class="badge badge-green">${product.category}</span>
                         </div>
                         <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">${product.name}</h3>
-                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${product.description}</p>
+                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${product.description || ''}</p>
                         <div class="flex-between">
                             <div>
                                 <span class="product-price">${product.price} ₽</span>
@@ -617,10 +591,10 @@ async function addToCart(productId, quantity = 1) {
     try {
         await apiRequest('/cart/items', {
             method: 'POST',
-            body: JSON.stringify({
+            body: {
                 product_id: parseInt(productId),
                 quantity: quantity
-            })
+            }
         });
         
         renderNav();
@@ -644,6 +618,7 @@ async function addToCart(productId, quantity = 1) {
 async function renderSuppliers() {
     try {
         const suppliers = await apiRequest('/farms');
+        if (!suppliers) return;
         
         const suppliersHTML = suppliers.map(supplier => `
             <div class="card clickable" onclick="navigateTo('supplierDetail', '${supplier.id}')">
@@ -658,7 +633,7 @@ async function renderSuppliers() {
                             </div>
                         ` : ''}
                     </div>
-                    <p class="text-gray" style="font-size: 0.875rem; margin-bottom: 0.75rem;">${supplier.description}</p>
+                    <p class="text-gray" style="font-size: 0.875rem; margin-bottom: 0.75rem;">${supplier.description || ''}</p>
                     <p class="text-gray" style="font-size: 0.875rem; margin-bottom: 1rem;">${getIcon('mapPin')} ${supplier.location}</p>
                 </div>
             </div>
@@ -679,12 +654,22 @@ async function renderSuppliers() {
 
 async function renderSupplierDetail() {
     try {
-        const supplier = await apiRequest(`/farms/${selectedSupplierId}`);
+        // В вашем файле farms.py нет GET /farms/{id} эндпоинта
+        // Вместо этого будем получать все фермы и фильтровать на клиенте
+        const suppliers = await apiRequest('/farms');
+        if (!suppliers) return;
+        
+        const supplier = suppliers.find(s => s.id === parseInt(selectedSupplierId));
+        if (!supplier) {
+            document.getElementById('supplierDetail').innerHTML = '<p class="text-gray">Ферма не найдена</p>';
+            return;
+        }
+        
         const products = await apiRequest('/products');
         const reviews = await apiRequest('/reviews');
         
-        const supplierProducts = products.filter(p => p.supplier_id === parseInt(selectedSupplierId));
-        const supplierReviews = reviews.filter(r => r.supplier_id === parseInt(selectedSupplierId));
+        const supplierProducts = products ? products.filter(p => p.supplier_id === parseInt(selectedSupplierId)) : [];
+        const supplierReviews = reviews ? reviews.filter(r => r.supplier_id === parseInt(selectedSupplierId)) : [];
 
         let html = `
             <div class="card mb-4">
@@ -705,7 +690,7 @@ async function renderSupplierDetail() {
                             </div>
                         ` : ''}
                     </div>
-                    <p style="color: #374151; line-height: 1.6;">${supplier.description}</p>
+                    <p style="color: #374151; line-height: 1.6;">${supplier.description || ''}</p>
                 </div>
             </div>
         `;
@@ -819,11 +804,11 @@ async function submitReview(e) {
     try {
         await apiRequest('/reviews', {
             method: 'POST',
-            body: JSON.stringify({
+            body: {
                 supplier_id: parseInt(selectedSupplierId),
                 rating: currentRating,
                 comment: comment
-            })
+            }
         });
 
         hideReviewForm();
@@ -838,9 +823,14 @@ async function submitReview(e) {
 async function renderProductDetail() {
     try {
         const product = await apiRequest(`/products/${selectedProductId}`);
+        if (!product) {
+            document.getElementById('productDetail').innerHTML = '<p class="text-gray">Продукт не найден</p>';
+            return;
+        }
+        
         const suppliers = await apiRequest('/farms');
         
-        const supplier = suppliers.find(s => s.id === product.supplier_id);
+        const supplier = suppliers ? suppliers.find(s => s.id === product.supplier_id) : null;
         const inCartCount = await getProductInCartCount(product.id);
 
         let html = `
@@ -851,7 +841,7 @@ async function renderProductDetail() {
                     <div class="card mb-4">
                         <div class="card-content">
                             <h2>Описание</h2>
-                            <p style="color: #374151; line-height: 1.6; margin-top: 1rem;">${product.description}</p>
+                            <p style="color: #374151; line-height: 1.6; margin-top: 1rem;">${product.description || ''}</p>
                             
                             <div style="margin-top: 2rem;">
                                 <h3 class="mb-2">Характеристики</h3>
@@ -950,19 +940,23 @@ async function renderProductDetail() {
 
 function updateProductQuantity(change) {
     const input = document.getElementById('productQuantity');
+    if (!input) return;
     let value = parseInt(input.value) || 1;
     value = Math.max(1, value + change);
     input.value = value;
 }
 
 function addToCartFromProductPage() {
-    const quantity = parseInt(document.getElementById('productQuantity').value) || 1;
+    const input = document.getElementById('productQuantity');
+    if (!input) return;
+    const quantity = parseInt(input.value) || 1;
     addToCart(selectedProductId, quantity);
 }
 
 async function renderSubscriptions() {
     try {
         const subscriptions = await apiRequest('/subscriptions/plans');
+        if (!subscriptions) return;
         
         const subscriptionsHTML = subscriptions.map(sub => {
             return `
@@ -972,7 +966,7 @@ async function renderSubscriptions() {
                         <div class="flex-between mb-2">
                             <h3>${sub.name}</h3>
                         </div>
-                        <p class="text-gray mb-2">${sub.description}</p>
+                        <p class="text-gray mb-2">${sub.description || ''}</p>
                         <div class="flex-between">
                             <div>
                                 <span style="font-size: 1.5rem; color: #16a34a; font-weight: 700;">${sub.price} ₽</span>
@@ -989,8 +983,7 @@ async function renderSubscriptions() {
             `;
         }).join('');
 
-        document.getElementById('subscriptionsGrid').innerHTML = subscriptionsHTML;
-        document.getElementById('activeSubscriptions').innerHTML = '';
+        document.getElementById('subscriptionsGrid').innerHTML = subscriptionsHTML || '<p class="text-center text-gray">Нет доступных подписок</p>';
     } catch (error) {
         console.error('Ошибка при загрузке подписок:', error);
         document.getElementById('subscriptionsGrid').innerHTML = '<p class="text-center text-gray">Ошибка загрузки данных</p>';
@@ -1037,7 +1030,7 @@ async function renderCart() {
         const cartItems = await apiRequest('/cart');
         const products = await apiRequest('/products');
 
-        if (cartItems.length === 0) {
+        if (!cartItems || cartItems.length === 0) {
             document.getElementById('cartContent').innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon">${getIcon('shoppingCart')}</div>
@@ -1049,7 +1042,7 @@ async function renderCart() {
         }
 
         const total = cartItems.reduce((sum, item) => {
-            const product = products.find(p => p.id === item.product_id);
+            const product = products ? products.find(p => p.id === item.product_id) : null;
             return sum + (product ? product.price * item.quantity : 0);
         }, 0);
 
@@ -1057,7 +1050,7 @@ async function renderCart() {
             <div class="cart-layout" style="display: grid; grid-template-columns: 1fr 400px; gap: 2rem; margin-top: 2rem;">
                 <div>
                     ${cartItems.map(item => {
-                        const product = products.find(p => p.id === item.product_id);
+                        const product = products ? products.find(p => p.id === item.product_id) : null;
                         if (!product) return '';
                         return `
                             <div class="cart-item">
@@ -1142,7 +1135,7 @@ async function renderCart() {
 async function updateCartItemQuantity(productId, change) {
     try {
         const cartItems = await apiRequest('/cart');
-        const item = cartItems.find(i => i.product_id === parseInt(productId));
+        const item = cartItems ? cartItems.find(i => i.product_id === parseInt(productId)) : null;
         
         if (item) {
             const newQuantity = item.quantity + change;
@@ -1151,7 +1144,7 @@ async function updateCartItemQuantity(productId, change) {
             } else {
                 await apiRequest(`/cart/items/${productId}`, {
                     method: 'PUT',
-                    body: JSON.stringify({ quantity: newQuantity })
+                    body: { quantity: newQuantity }
                 });
             }
         }
@@ -1180,8 +1173,13 @@ async function removeFromCart(productId) {
 }
 
 async function checkout() {
-    const address = document.getElementById('deliveryAddress').value;
-    const paymentMethod = document.getElementById('paymentMethod').value;
+    const addressInput = document.getElementById('deliveryAddress');
+    const paymentMethodSelect = document.getElementById('paymentMethod');
+    
+    if (!addressInput || !paymentMethodSelect) return;
+    
+    const address = addressInput.value;
+    const paymentMethod = paymentMethodSelect.value;
 
     if (!address) {
         showToast('error', 'Ошибка', 'Пожалуйста, укажите адрес доставки');
@@ -1191,7 +1189,7 @@ async function checkout() {
     try {
         const cartItems = await apiRequest('/cart');
         
-        if (cartItems.length === 0) {
+        if (!cartItems || cartItems.length === 0) {
             showToast('error', 'Ошибка', 'Корзина пуста');
             return;
         }
@@ -1207,12 +1205,15 @@ async function checkout() {
 
         await apiRequest('/orders', {
             method: 'POST',
-            body: JSON.stringify(orderData)
+            body: orderData
         });
 
-        await apiRequest('/cart/clear', {
-            method: 'DELETE'
-        });
+        // Очистка корзины после оформления заказа
+        for (const item of cartItems) {
+            await apiRequest(`/cart/items/${item.product_id}`, {
+                method: 'DELETE'
+            });
+        }
 
         renderNav();
         showToast('success', 'Заказ успешно оформлен!', 'Отслеживайте его статус в профиле.');
@@ -1231,8 +1232,9 @@ async function renderProfile() {
 
     try {
         const userProfile = await apiRequest('/auth/me');
+        if (!userProfile) return;
+        
         const orders = await apiRequest('/orders');
-        const userSubscriptions = await apiRequest('/subscriptions/user');
 
         const html = `
             <div class="profile-layout" style="display: grid; grid-template-columns: 350px 1fr; gap: 2rem; margin-top: 2rem;">
@@ -1248,8 +1250,8 @@ async function renderProfile() {
                             <div class="text-center mb-4" id="profileInfo">
                                 <h2 style="margin-bottom: 0.25rem;">${userProfile.name}</h2>
                                 <p class="text-gray" style="font-size: 0.875rem;">${userProfile.email}</p>
-                                <span class="badge ${isAdmin() ? 'badge-green' : isSupplier() ? 'badge-blue' : 'badge-yellow'}" style="margin-top: 0.5rem;">
-                                    ${isCustomer() ? 'Покупатель' : isSupplier() ? 'Поставщик' : 'Администратор'}
+                                <span class="badge ${isAdmin() ? 'badge-green' : isFarmer() ? 'badge-blue' : 'badge-yellow'}" style="margin-top: 0.5rem;">
+                                    ${isCustomer() ? 'Покупатель' : isFarmer() ? 'Поставщик' : 'Администратор'}
                                 </span>
                             </div>
 
@@ -1261,7 +1263,6 @@ async function renderProfile() {
                                         <p>${userProfile.address || 'Не указан'}</p>
                                     </div>
                                 </div>
-
                             </div>
 
                             <button class="btn btn-primary" style="width: 100%; margin-bottom: 0.5rem;" onclick="showEditProfile()">Редактировать профиль</button>
@@ -1290,9 +1291,9 @@ async function renderProfile() {
                     <div class="card mb-4">
                         <div class="card-content">
                             <h2 class="mb-4">${getIcon('clock')} Активные заказы</h2>
-                            ${orders.filter(o => o.status === 'active').length === 0 ? 
+                            ${orders && orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length === 0 ? 
                                 '<p class="text-center text-gray" style="padding: 2rem 0;">Нет активных заказов</p>' : 
-                                orders.filter(o => o.status === 'active').map(order => `
+                                orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').map(order => `
                                     <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;">
                                         <div class="flex-between mb-2">
                                             <div>
@@ -1322,29 +1323,40 @@ async function renderProfile() {
 }
 
 function showEditProfile() {
-    document.getElementById('profileDetails').style.display = 'none';
+    const profileDetails = document.getElementById('profileDetails');
     const editBtn = document.querySelector('#profileContent button[onclick="showEditProfile()"]');
+    const editForm = document.getElementById('editProfileForm');
+    
+    if (profileDetails) profileDetails.style.display = 'none';
     if (editBtn) editBtn.style.display = 'none';
-    document.getElementById('editProfileForm').style.display = 'block';
+    if (editForm) editForm.style.display = 'block';
 }
 
 function hideEditProfile() {
-    document.getElementById('profileDetails').style.display = 'block';
+    const profileDetails = document.getElementById('profileDetails');
     const editBtn = document.querySelector('#profileContent button[onclick="showEditProfile()"]');
+    const editForm = document.getElementById('editProfileForm');
+    
+    if (profileDetails) profileDetails.style.display = 'block';
     if (editBtn) editBtn.style.display = 'block';
-    document.getElementById('editProfileForm').style.display = 'none';
+    if (editForm) editForm.style.display = 'none';
 }
 
 async function saveProfile(e) {
     e.preventDefault();
 
-    const name = document.getElementById('editName').value;
-    const address = document.getElementById('editAddress').value;
+    const nameInput = document.getElementById('editName');
+    const addressInput = document.getElementById('editAddress');
+    
+    if (!nameInput || !addressInput) return;
+    
+    const name = nameInput.value;
+    const address = addressInput.value;
 
     try {
         await apiRequest('/auth/me', {
             method: 'PATCH',
-            body: JSON.stringify({ name, address })
+            body: { name, address }
         });
 
         currentUser.name = name;
@@ -1359,7 +1371,6 @@ async function saveProfile(e) {
     }
 }
 
-// ADMIN PANEL FUNCTIONS
 function switchAdminTab(tabName, event) {
     event.preventDefault();
     currentAdminTab = tabName;
@@ -1379,32 +1390,6 @@ async function renderAdminPanel() {
         return;
     }
 
-
-      try {
-        const userProfile = await apiRequest('/auth/me');
-        if (!userProfile || userProfile.role !== 'admin') {
-            document.getElementById('adminContent').innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-state-icon">${getIcon('crown')}</div>
-                    <p>Доступ запрещен. Требуются права администратора.</p>
-                    <p style="color: #9ca3af; font-size: 0.875rem;">Ваша роль: ${userProfile?.role || 'неизвестна'}</p>
-                </div>
-            `;
-            return;
-        }
-    } catch (error) {
-        document.getElementById('adminContent').innerHTML = `
-            <div class="empty-state">
-                <div class="empty-state-icon">${getIcon('x')}</div>
-                <p>Ошибка проверки прав доступа</p>
-                <p style="color: #9ca3af; font-size: 0.875rem;">${error.message}</p>
-            </div>
-        `;
-        return;
-    }
-
-
-
     const tabsHTML = `
         <div style="display: flex; gap: 1rem; border-bottom: 1px solid #e5e7eb; margin-bottom: 2rem; flex-wrap: wrap;">
             <button class="admin-tab-btn ${currentAdminTab === 'dashboard' ? 'active' : ''}" onclick="switchAdminTab('dashboard', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'dashboard' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'dashboard' ? '2px solid #16a34a' : 'none'};">Статистика</button>
@@ -1419,30 +1404,35 @@ async function renderAdminPanel() {
 
     let contentHTML = '';
     
-    switch(currentAdminTab) {
-        case 'dashboard':
-            contentHTML = await renderAdminDashboard();
-            break;
-        case 'users':
-            contentHTML = await renderAdminUsers();
-            break;
-        case 'suppliers':
-            contentHTML = await renderAdminSuppliers();
-            break;
-        case 'products':
-            contentHTML = await renderAdminProducts();
-            break;
-        case 'orders':
-            contentHTML = await renderAdminOrders();
-            break;
-        case 'reviews':
-            contentHTML = await renderAdminReviews();
-            break;
-        case 'categories':
-            contentHTML = await renderAdminCategories();
-            break;
-        default:
-            contentHTML = '<p class="text-gray">Выберите раздел</p>';
+    try {
+        switch(currentAdminTab) {
+            case 'dashboard':
+                contentHTML = await renderAdminDashboard();
+                break;
+            case 'users':
+                contentHTML = await renderAdminUsers();
+                break;
+            case 'suppliers':
+                contentHTML = await renderAdminSuppliers();
+                break;
+            case 'products':
+                contentHTML = await renderAdminProducts();
+                break;
+            case 'orders':
+                contentHTML = await renderAdminOrders();
+                break;
+            case 'reviews':
+                contentHTML = await renderAdminReviews();
+                break;
+            case 'categories':
+                contentHTML = await renderAdminCategories();
+                break;
+            default:
+                contentHTML = '<p class="text-gray">Выберите раздел</p>';
+        }
+    } catch (error) {
+        console.error(`Ошибка при загрузке вкладки ${currentAdminTab}:`, error);
+        contentHTML = `<p class="text-gray">Ошибка загрузки данных: ${error.message}</p>`;
     }
 
     document.getElementById('adminContent').innerHTML = tabsHTML + contentHTML;
@@ -1457,31 +1447,31 @@ async function renderAdminDashboard() {
                 <div class="card">
                     <div class="card-content">
                         <p class="text-gray mb-2">Всего пользователей</p>
-                        <p style="font-size: 2.5rem; font-weight: 700; color: #16a34a;">${stats.total_users}</p>
+                        <p style="font-size: 2.5rem; font-weight: 700; color: #16a34a;">${stats.total_users || 0}</p>
                     </div>
                 </div>
                 <div class="card">
                     <div class="card-content">
                         <p class="text-gray mb-2">Фермы</p>
-                        <p style="font-size: 2.5rem; font-weight: 700; color: #3b82f6;">${stats.total_farms}</p>
+                        <p style="font-size: 2.5rem; font-weight: 700; color: #3b82f6;">${stats.total_farms || 0}</p>
                     </div>
                 </div>
                 <div class="card">
                     <div class="card-content">
                         <p class="text-gray mb-2">Продукты</p>
-                        <p style="font-size: 2.5rem; font-weight: 700; color: #f59e0b;">${stats.total_products}</p>
+                        <p style="font-size: 2.5rem; font-weight: 700; color: #f59e0b;">${stats.total_products || 0}</p>
                     </div>
                 </div>
                 <div class="card">
                     <div class="card-content">
                         <p class="text-gray mb-2">Заказы</p>
-                        <p style="font-size: 2.5rem; font-weight: 700; color: #ef4444;">${stats.total_orders}</p>
+                        <p style="font-size: 2.5rem; font-weight: 700; color: #ef4444;">${stats.total_orders || 0}</p>
                     </div>
                 </div>
                 <div class="card">
                     <div class="card-content">
                         <p class="text-gray mb-2">Отзывы</p>
-                        <p style="font-size: 2.5rem; font-weight: 700; color: #8b5cf6;">${stats.total_reviews}</p>
+                        <p style="font-size: 2.5rem; font-weight: 700; color: #8b5cf6;">${stats.total_reviews || 0}</p>
                     </div>
                 </div>
             </div>
@@ -1496,8 +1486,7 @@ async function renderAdminUsers() {
     try {
         const response = await apiRequest(`/admin/users?page=${currentAdminPage}&per_page=${adminItemsPerPage}`);
         
-        // Проверяем структуру ответа
-        if (!response || !response.users) {
+        if (!response) {
             throw new Error('Некорректный ответ от сервера');
         }
         
@@ -1563,7 +1552,6 @@ async function renderAdminUsers() {
                         <div class="empty-state-icon">${getIcon('x')}</div>
                         <p>Ошибка загрузки данных</p>
                         <p style="color: #9ca3af; font-size: 0.875rem;">${error.message}</p>
-                        <button class="btn btn-primary mt-2" onclick="renderAdminPanel()">Повторить попытку</button>
                     </div>
                 </div>
             </div>
@@ -1615,7 +1603,7 @@ async function renderAdminProducts() {
                     <h2 class="mb-4">Управление продуктами (всего: ${total})</h2>
                     <div class="grid grid-3">
                         ${products.map(product => {
-                            const supplier = suppliers.find(s => s.id === product.supplier_id);
+                            const supplier = suppliers ? suppliers.find(s => s.id === product.supplier_id) : null;
                             return `
                                 <div class="card">
                                     <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}" style="height: 150px; object-fit: cover;">
@@ -1686,7 +1674,7 @@ async function renderAdminSuppliers() {
                                         <p style="font-size: 0.875rem; color: #6b7280;">${supplier.location}</p>
                                     </div>
                                 </div>
-                                <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${supplier.description}</p>
+                                <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${supplier.description || ''}</p>
                                 <div class="flex gap-1">
                                     <button class="btn btn-danger btn-small" onclick="deleteSupplier('${supplier.id}')">${getIcon('trash')} Удалить</button>
                                 </div>
@@ -1845,7 +1833,7 @@ async function renderAdminOrders() {
 
 async function renderAdminCategories() {
     try {
-        const categories = await apiRequest(`/admin/categories`);
+        const categories = await apiRequest('/categories');
         
         let html = `
             <div class="card">
@@ -1887,25 +1875,31 @@ async function renderAdminCategories() {
 }
 
 function showAddCategoryForm() {
-    document.getElementById('addCategoryForm').style.display = 'block';
+    const form = document.getElementById('addCategoryForm');
+    if (form) form.style.display = 'block';
 }
 
 function hideAddCategoryForm() {
-    document.getElementById('addCategoryForm').style.display = 'none';
+    const form = document.getElementById('addCategoryForm');
+    if (form) form.style.display = 'none';
 }
 
 async function saveAdminCategory(e) {
     e.preventDefault();
 
-    const categoryName = document.getElementById('categoryName').value;
+    const categoryNameInput = document.getElementById('categoryName');
+    if (!categoryNameInput) return;
+    
+    const categoryName = categoryNameInput.value;
 
     try {
-        await apiRequest(`/admin/categories?category_name=${encodeURIComponent(categoryName)}`, {
-            method: 'POST'
+        await apiRequest('/categories', {
+            method: 'POST',
+            body: { name: categoryName }
         });
 
         hideAddCategoryForm();
-        document.getElementById('categoryName').value = '';
+        categoryNameInput.value = '';
         renderAdminPanel();
         showToast('success', 'Категория добавлена');
     } catch (error) {
@@ -1918,7 +1912,7 @@ async function deleteCategory(categoryId) {
     if (!confirm('Удалить категорию?')) return;
     
     try {
-        await apiRequest(`/admin/categories/${categoryId}`, {
+        await apiRequest(`/categories/${categoryId}`, {
             method: 'DELETE'
         });
         
@@ -1931,8 +1925,7 @@ async function deleteCategory(categoryId) {
 }
 
 async function renderSupplierPanel() {
-
-    if (!isSupplier() && !isAdmin()) {
+    if (!isFarmer() && !isAdmin()) {
         document.getElementById('supplierPanelContent').innerHTML = `
         <div style="padding: 20px; text-align: center;">
             <p>Доступ запрещен. Только фермеры могут использовать эту панель.</p>
@@ -1942,7 +1935,7 @@ async function renderSupplierPanel() {
 
     try {
         const suppliers = await apiRequest('/farms');
-        const supplier = suppliers.find(s => s.user_id === currentUser.id);
+        const supplier = suppliers ? suppliers.find(s => s.user_id === currentUser.id) : null;
         
         let html = `
             <div class="card mb-4">
@@ -1961,7 +1954,7 @@ async function renderSupplierPanel() {
                                         <h3>${supplier.name}</h3>
                                     </div>
                                     <p class="text-gray mb-2">${supplier.location}</p>
-                                    <p style="color: #374151;">${supplier.description}</p>
+                                    <p style="color: #374151;">${supplier.description || ''}</p>
                                     ${supplier.rating > 0 ? `
                                         <p class="mt-1" style="color: #fbbf24;">★ ${supplier.rating} рейтинг</p>
                                     ` : ''}
@@ -1974,7 +1967,7 @@ async function renderSupplierPanel() {
                             <form onsubmit="saveSupplierPanelInfo(event)" enctype="multipart/form-data">
                                 <input type="text" class="form-input mb-2" id="supplierPanelName" value="${supplier.name}" placeholder="Название фермы" required>
                                 <input type="text" class="form-input mb-2" id="supplierPanelLocation" value="${supplier.location}" placeholder="Местоположение" required>
-                                <textarea class="form-input mb-2" id="supplierPanelDescription" rows="4" required>${supplier.description}</textarea>
+                                <textarea class="form-input mb-2" id="supplierPanelDescription" rows="4" required>${supplier.description || ''}</textarea>
                                 <input type="file" class="form-input mb-2" id="supplierPanelImage" accept="image/*">
                                 <div class="flex gap-1">
                                     <button type="submit" class="btn btn-primary">Сохранить</button>
@@ -2007,9 +2000,9 @@ async function renderSupplierPanel() {
             </div>
         `;
 
-        if (supplier && supplier.approved) {
+        if (supplier) {
             const products = await apiRequest('/products');
-            const supplierProducts = products.filter(p => p.supplier_id === supplier.id);
+            const supplierProducts = products ? products.filter(p => p.supplier_id === supplier.id) : [];
             
             html += `
                 <div class="card">
@@ -2071,32 +2064,44 @@ async function renderSupplierPanel() {
 }
 
 function showCreateSupplier() {
-    document.getElementById('createSupplierForm').style.display = 'block';
+    const form = document.getElementById('createSupplierForm');
+    if (form) form.style.display = 'block';
 }
 
 function hideCreateSupplier() {
-    document.getElementById('createSupplierForm').style.display = 'none';
+    const form = document.getElementById('createSupplierForm');
+    if (form) form.style.display = 'none';
 }
 
 async function createSupplier(e) {
     e.preventDefault();
 
     const formData = new FormData();
-    formData.append('name', document.getElementById('newSupplierName').value);
-    formData.append('location', document.getElementById('newSupplierLocation').value);
-    formData.append('description', document.getElementById('newSupplierDescription').value);
-    
+    const nameInput = document.getElementById('newSupplierName');
+    const locationInput = document.getElementById('newSupplierLocation');
+    const descriptionInput = document.getElementById('newSupplierDescription');
     const imageInput = document.getElementById('newSupplierImage');
-    if (imageInput.files[0]) {
+    
+    if (!nameInput || !locationInput || !descriptionInput) return;
+    
+    formData.append('name', nameInput.value);
+    formData.append('location', locationInput.value);
+    formData.append('description', descriptionInput.value);
+    
+    if (imageInput && imageInput.files[0]) {
         formData.append('image', imageInput.files[0]);
     }
 
     try {
-        await fetch(`${API_BASE_URL}/farms/applications`, {
+        const response = await fetch(`${API_BASE_URL}/farms/applications`, {
             method: 'POST',
             body: formData,
             credentials: 'include'
         });
+
+        if (!response.ok) {
+            throw new Error('Ошибка при отправке заявки');
+        }
 
         showToast('success', 'Заявка отправлена', 'Заявка на регистрацию фермы отправлена администратору');
         hideCreateSupplier();
@@ -2108,38 +2113,54 @@ async function createSupplier(e) {
 }
 
 function showEditSupplierPanel() {
-    document.getElementById('supplierInfo').style.display = 'none';
-    document.getElementById('editSupplierPanelForm').style.display = 'block';
+    const supplierInfo = document.getElementById('supplierInfo');
+    const editForm = document.getElementById('editSupplierPanelForm');
+    
+    if (supplierInfo) supplierInfo.style.display = 'none';
+    if (editForm) editForm.style.display = 'block';
 }
 
 function hideEditSupplierPanel() {
-    document.getElementById('supplierInfo').style.display = 'block';
-    document.getElementById('editSupplierPanelForm').style.display = 'none';
+    const supplierInfo = document.getElementById('supplierInfo');
+    const editForm = document.getElementById('editSupplierPanelForm');
+    
+    if (supplierInfo) supplierInfo.style.display = 'block';
+    if (editForm) editForm.style.display = 'none';
 }
 
 async function saveSupplierPanelInfo(e) {
     e.preventDefault();
 
     const formData = new FormData();
-    formData.append('name', document.getElementById('supplierPanelName').value);
-    formData.append('location', document.getElementById('supplierPanelLocation').value);
-    formData.append('description', document.getElementById('supplierPanelDescription').value);
-    
+    const nameInput = document.getElementById('supplierPanelName');
+    const locationInput = document.getElementById('supplierPanelLocation');
+    const descriptionInput = document.getElementById('supplierPanelDescription');
     const imageInput = document.getElementById('supplierPanelImage');
-    if (imageInput.files[0]) {
+    
+    if (!nameInput || !locationInput || !descriptionInput) return;
+    
+    formData.append('name', nameInput.value);
+    formData.append('location', locationInput.value);
+    formData.append('description', descriptionInput.value);
+    
+    if (imageInput && imageInput.files[0]) {
         formData.append('image', imageInput.files[0]);
     }
 
     try {
         const suppliers = await apiRequest('/farms');
-        const supplier = suppliers.find(s => s.user_id === currentUser.id);
+        const supplier = suppliers ? suppliers.find(s => s.user_id === currentUser.id) : null;
         
         if (supplier) {
-            await fetch(`${API_BASE_URL}/farms/${supplier.id}`, {
+            const response = await fetch(`${API_BASE_URL}/farms/${supplier.id}`, {
                 method: 'PUT',
                 body: formData,
                 credentials: 'include'
             });
+
+            if (!response.ok) {
+                throw new Error('Ошибка при обновлении информации');
+            }
         }
 
         hideEditSupplierPanel();
@@ -2152,40 +2173,54 @@ async function saveSupplierPanelInfo(e) {
 }
 
 function showAddSupplierProduct() {
-    document.getElementById('addSupplierProductForm').style.display = 'block';
+    const form = document.getElementById('addSupplierProductForm');
+    if (form) form.style.display = 'block';
 }
 
 function hideAddSupplierProduct() {
-    document.getElementById('addSupplierProductForm').style.display = 'none';
+    const form = document.getElementById('addSupplierProductForm');
+    if (form) form.style.display = 'none';
 }
 
 async function saveSupplierProduct(e) {
     e.preventDefault();
 
     const formData = new FormData();
-    formData.append('name', document.getElementById('supplierProductName').value);
-    formData.append('price', document.getElementById('supplierProductPrice').value);
-    formData.append('unit', document.getElementById('supplierProductUnit').value);
-    formData.append('category', document.getElementById('supplierProductCategory').value);
-    formData.append('description', document.getElementById('supplierProductDescription').value);
-    
+    const nameInput = document.getElementById('supplierProductName');
+    const priceInput = document.getElementById('supplierProductPrice');
+    const unitInput = document.getElementById('supplierProductUnit');
+    const categoryInput = document.getElementById('supplierProductCategory');
+    const descriptionInput = document.getElementById('supplierProductDescription');
     const imageInput = document.getElementById('supplierProductImage');
-    if (imageInput.files[0]) {
+    
+    if (!nameInput || !priceInput || !unitInput || !categoryInput || !descriptionInput) return;
+    
+    formData.append('name', nameInput.value);
+    formData.append('price', priceInput.value);
+    formData.append('unit', unitInput.value);
+    formData.append('category', categoryInput.value);
+    formData.append('description', descriptionInput.value);
+    
+    if (imageInput && imageInput.files[0]) {
         formData.append('image', imageInput.files[0]);
     }
 
     try {
         const suppliers = await apiRequest('/farms');
-        const supplier = suppliers.find(s => s.user_id === currentUser.id);
+        const supplier = suppliers ? suppliers.find(s => s.user_id === currentUser.id) : null;
         
         if (supplier) {
             formData.append('supplier_id', supplier.id);
             
-            await fetch(`${API_BASE_URL}/products`, {
+            const response = await fetch(`${API_BASE_URL}/products`, {
                 method: 'POST',
                 body: formData,
                 credentials: 'include'
             });
+
+            if (!response.ok) {
+                throw new Error('Ошибка при добавлении продукта');
+            }
         }
 
         hideAddSupplierProduct();
@@ -2224,8 +2259,6 @@ document.addEventListener('DOMContentLoaded', function() {
             const errorDiv = document.getElementById('authError');
             
             try {
-                let response;
-                
                 if (authMode === 'register') {
                     const name = document.getElementById('authName').value;
                     const address = document.getElementById('authAddress').value;
@@ -2235,8 +2268,8 @@ document.addEventListener('DOMContentLoaded', function() {
                         errorDiv.style.display = 'block';
                         return;
                     }
- 
-                    response = await fetch(`${API_BASE_URL}/auth/register`, {
+
+                    const registerResponse = await fetch(`${API_BASE_URL}/auth/register`, {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json'
@@ -2250,21 +2283,21 @@ document.addEventListener('DOMContentLoaded', function() {
                         credentials: 'include'
                     });
                     
-                    if (!response.ok) {
-                        const error = await response.json().catch(() => ({}));
+                    if (!registerResponse.ok) {
+                        const error = await registerResponse.json().catch(() => ({}));
                         if (Array.isArray(error.detail)) {
                             errorDiv.textContent = error.detail.map(err => err.msg || err.detail || 'Ошибка регистрации').join(', ');
                         } else if (typeof error.detail === 'object' && error.detail !== null) {
-                            errorDiv.textContent = error.detail.msg || error.detail.message || error.detail || 'Ошибка регистрации: ' + response.statusText;
+                            errorDiv.textContent = error.detail.msg || error.detail.message || error.detail || 'Ошибка регистрации: ' + registerResponse.statusText;
                         } else {
-                            errorDiv.textContent = error.detail || 'Ошибка регистрации: ' + response.statusText;
+                            errorDiv.textContent = error.detail || 'Ошибка регистрации: ' + registerResponse.statusText;
                         }
                         errorDiv.style.display = 'block';
                         return;
                     }
                 }
- 
-                response = await fetch(`${API_BASE_URL}/auth/login`, {
+
+                const loginResponse = await fetch(`${API_BASE_URL}/auth/login`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -2276,8 +2309,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     credentials: 'include'
                 });
                 
-                if (!response.ok) {
-                    const error = await response.json().catch(() => ({}));
+                if (!loginResponse.ok) {
+                    const error = await loginResponse.json().catch(() => ({}));
                     if (Array.isArray(error.detail)) {
                         errorDiv.textContent = error.detail.map(err => err.msg || err.detail || 'Неверный email или пароль').join(', ');
                     } else if (typeof error.detail === 'object' && error.detail !== null) {
@@ -2293,7 +2326,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (userResponse) {
                     currentUser = userResponse;
                     
-                    // Проверяем роль и редиректим
                     closeAuthModal();
                     renderNav();
                     
@@ -2321,31 +2353,12 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
 
-    checkAuth();
-
-        async function checkAuth() {
+    async function checkAuth() {
         try {
             const user = await apiRequest('/auth/me');
             if (user) {
                 currentUser = user;
                 renderNav();
-                
-                // Проверяем путь и роль для корректного редиректа
-                const currentPath = window.location.hash.substring(1) || 'home';
-                
-                if (user.role === 'admin') {
-                    // Если пытаемся зайти на админку без прав, показываем сообщение
-                    if (currentPath === 'admin' && !isAdmin()) {
-                        navigateTo('home');
-                        showToast('error', 'Доступ запрещен', 'Требуются права администратора');
-                    } else if (currentPage === 'home') {
-                        navigateTo('admin');
-                    }
-                } else if (user.role === 'farmer') {
-                    if (currentPage === 'home') {
-                        navigateTo('supplierPanel');
-                    }
-                }
             }
         } catch (error) {
             currentUser = null;
@@ -2353,6 +2366,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    checkAuth();
     renderNav();
     renderHomePage();
 
@@ -2360,4 +2374,10 @@ document.addEventListener('DOMContentLoaded', function() {
     if (mobileMenuBtn) {
         mobileMenuBtn.addEventListener('click', toggleMobileMenu);
     }
+
+    window.addEventListener('resize', function() {
+        if (window.innerWidth > 768 && mobileMenuOpen) {
+            closeMobileMenu();
+        }
+    });
 });
