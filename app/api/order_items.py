@@ -1,7 +1,6 @@
-from typing import Annotated
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
-from app.api.dependencies import DBDep, CurrentUserDep, IsAdminDep
+from app.api.dependencies import DBDep, CurrentUserDep
 from app.exceptions.order_items import (
     OrderItemNotFoundError,
     OrderItemNotFoundHTTPError,

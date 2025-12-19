@@ -20,7 +20,7 @@ app = FastAPI(title="Прямо с грядки", version="1.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://127.0.0.1:8000", "http://localhost:8000", "http://127.0.0.1:8002", "http://localhost:8002"],  # Указываем конкретные домены
+    allow_origins=["http://127.0.0.1:8000", "http://localhost:8000", "http://127.0.0.1:8002", "http://localhost:8002"],  
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

@@ -1,4 +1,5 @@
 from typing import Annotated
+from enum import Enum
 
 from fastapi import Depends, HTTPException, Request
 from pydantic import BaseModel, Field
@@ -82,19 +83,15 @@ async def check_is_farmer_or_admin(db: DBDep, user_id: UserIdDep) -> int:
         return user_id
     else:
         raise HTTPException(status_code=403, detail="Недостаточно прав")
-
-
 IsFarmerOrAdminDep = Annotated[int, Depends(check_is_farmer_or_admin)]
-
-
-from enum import Enum
-from app.models.roles import Role
 
 
 class RoleEnum(str, Enum):
     admin = "admin"
     farmer = "farmer"
     customer = "customer"
+
+
 
 
 

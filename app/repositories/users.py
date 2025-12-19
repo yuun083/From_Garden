@@ -1,9 +1,8 @@
 from typing import List, Optional
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
-from app.exceptions.users import UserNotFoundError
 from app.models.users import User
-from app.schemes.users import SUserGet, UserProfile
+from app.schemes.users import SUserGet
 from .base import BaseRepository
 
 class UsersRepository(BaseRepository[User, SUserGet]):
@@ -26,7 +25,6 @@ class UsersRepository(BaseRepository[User, SUserGet]):
         return await self.get_one(id=user_id)
     
     async def update_user(self, user_id: int, update_data: dict) -> User:
-        from app.exceptions.users import UserNotFoundError
         user = await self.get_one_or_raise(id=user_id)
         
         for key, value in update_data.items():

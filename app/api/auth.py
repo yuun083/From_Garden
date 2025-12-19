@@ -1,5 +1,3 @@
-import random
-from sqlite3 import IntegrityError
 from fastapi import APIRouter, Depends, HTTPException
 from starlette.responses import Response
 

@@ -9,17 +9,6 @@ from alembic import context
 from app.database.database import Base
 from app.config import settings
 
-from app.models.users import User
-from app.models.roles import Role
-from app.models.products import Product
-from app.models.farms import Farm
-from app.models.categories import Category
-from app.models.cart import Cart
-from app.models.orders import Order
-from app.models.order_items import OrderItem
-from app.models.reviews import Review
-from app.models.subscription_plans import SubscriptionPlan
-from app.models.user_subscriptions import UserSubscription
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
