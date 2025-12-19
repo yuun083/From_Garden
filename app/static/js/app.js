@@ -1216,7 +1216,6 @@ async function renderProfile() {
         const userProfile = await apiRequest('/auth/me');
         const orders = await apiRequest('/orders');
         const userSubscriptions = await apiRequest('/subscriptions/user');
-        const userPrizes = await apiRequest('/lottery/user/prizes');
 
         const html = `
             <div class="profile-layout" style="display: grid; grid-template-columns: 350px 1fr; gap: 2rem; margin-top: 2rem;">
@@ -1880,6 +1879,15 @@ async function deleteCategory(categoryId) {
 }
 
 async function renderSupplierPanel() {
+
+    if (!isSupplier() && !isAdmin()) {
+        document.getElementById('supplierPanelContent').innerHTML = `
+        <div style="padding: 20px; text-align: center;">
+            <p>Доступ запрещен. Только фермеры могут использовать эту панель.</p>
+        </div>`;
+        return;
+    }
+    
     try {
         const suppliers = await apiRequest('/farms');
         const supplier = suppliers.find(s => s.user_id === currentUser.id);
@@ -2232,12 +2240,25 @@ document.addEventListener('DOMContentLoaded', function() {
                 const userResponse = await apiRequest('/auth/me');
                 if (userResponse) {
                     currentUser = userResponse;
+                    // Редирект в зависимости от роли
+                    if (userResponse.role === 'admin') {
+                        closeAuthModal();
+                        renderNav();
+                        navigateTo('admin');
+                        showToast('success', 'Добро пожаловать, администратор!');
+                    } else if (userResponse.role === 'farmer') {
+                        closeAuthModal();
+                        renderNav();
+                        navigateTo('supplierPanel');
+                        showToast('success', 'Добро пожаловать, фермер!');
+                    } else {
+                        closeAuthModal();
+                        renderNav();
+                        navigateTo('home');
+                        showToast('success', 'Добро пожаловать!');
+                    }
+                    return;  // ← Выход из функции
                 }
-                
-                closeAuthModal();
-                renderNav();
-                navigateTo('home');
-                showToast('success', 'Добро пожаловать!');
             } catch (error) {
                 console.error('Ошибка авторизации:', error);
                 if (error.message.includes('Failed to fetch')) {
@@ -2258,6 +2279,14 @@ document.addEventListener('DOMContentLoaded', function() {
             if (user) {
                 currentUser = user;
                 renderNav();
+                // Если пользователь это админ и мы на главной, редирект в админ-панель
+                if (user.role === 'admin' && currentPage === 'home') {
+                    navigateTo('admin');
+                } 
+                // Если пользователь это фермер и мы на главной, редирект в панель фермера
+                else if (user.role === 'farmer' && currentPage === 'home') {
+                    navigateTo('supplierPanel');
+                }
             }
         } catch (error) {
             currentUser = null;
