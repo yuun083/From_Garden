@@ -13,6 +13,11 @@ function isSupplier() {
 function isCustomer() {
     return currentUser && currentUser.role === 'customer';
 }
+
+function checkAdminAccess() {
+    return isAdmin();
+}
+
 let currentPage = 'home';
 let selectedCategory = 'Все';
 let selectedSupplierId = null;
@@ -95,6 +100,18 @@ async function apiRequest(endpoint, options = {}) {
         }
         return null;
     }
+
+    if (response.status === 403) {
+        // Доступ запрещен - недостаточно прав
+        if (endpoint.includes('/admin/')) {
+            currentUser = null;
+            renderNav();
+            navigateTo('home');
+            showToast('error', 'Доступ запрещен', 'Требуются права администратора');
+        }
+        return null;
+    }
+
     
     if (!response.ok) {
         const error = await response.json().catch(() => ({}));
@@ -306,8 +323,8 @@ async function renderNav() {
 `;
 
     if (isAdmin()) {
-        navHTML += `<button class="nav-btn admin-btn" onclick="navigateTo('admin')">${getIcon('settings')} Админ</button>`;
-        mobileNavHTML += `<button class="nav-btn admin-btn" onclick="navigateTo('admin')">${getIcon('settings')} Админ</button>`;
+    navHTML += `<button class="nav-btn admin-btn ${currentPage === 'admin' ? 'active' : ''}" onclick="navigateTo('admin')">${getIcon('crown')} Админ</button>`;
+    mobileNavHTML += `<button class="nav-btn admin-btn ${currentPage === 'admin' ? 'active' : ''}" onclick="navigateTo('admin')">${getIcon('crown')} Админ</button>`;
     }
 
     if (isSupplier()) {
@@ -1244,15 +1261,7 @@ async function renderProfile() {
                                         <p>${userProfile.address || 'Не указан'}</p>
                                     </div>
                                 </div>
-                                ${userPrizes.filter(p => !p.claimed).length > 0 ? `
-                                    <div style="display: flex; gap: 0.75rem; align-items: flex-start; padding-top: 0.75rem; border-top: 1px solid #e5e7eb;">
-                                        <span style="color: #fbbf24;">${getIcon('gift')}</span>
-                                        <div>
-                                            <p style="font-size: 0.875rem; color: #6b7280;">Призы к получению</p>
-                                            <p style="font-weight: 600; color: #f59e0b;">${userPrizes.filter(p => !p.claimed).length} приз(ов)</p>
-                                        </div>
-                                    </div>
-                                ` : ''}
+
                             </div>
 
                             <button class="btn btn-primary" style="width: 100%; margin-bottom: 0.5rem;" onclick="showEditProfile()">Редактировать профиль</button>
@@ -1370,6 +1379,32 @@ async function renderAdminPanel() {
         return;
     }
 
+
+      try {
+        const userProfile = await apiRequest('/auth/me');
+        if (!userProfile || userProfile.role !== 'admin') {
+            document.getElementById('adminContent').innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-state-icon">${getIcon('crown')}</div>
+                    <p>Доступ запрещен. Требуются права администратора.</p>
+                    <p style="color: #9ca3af; font-size: 0.875rem;">Ваша роль: ${userProfile?.role || 'неизвестна'}</p>
+                </div>
+            `;
+            return;
+        }
+    } catch (error) {
+        document.getElementById('adminContent').innerHTML = `
+            <div class="empty-state">
+                <div class="empty-state-icon">${getIcon('x')}</div>
+                <p>Ошибка проверки прав доступа</p>
+                <p style="color: #9ca3af; font-size: 0.875rem;">${error.message}</p>
+            </div>
+        `;
+        return;
+    }
+
+
+
     const tabsHTML = `
         <div style="display: flex; gap: 1rem; border-bottom: 1px solid #e5e7eb; margin-bottom: 2rem; flex-wrap: wrap;">
             <button class="admin-tab-btn ${currentAdminTab === 'dashboard' ? 'active' : ''}" onclick="switchAdminTab('dashboard', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'dashboard' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'dashboard' ? '2px solid #16a34a' : 'none'};">Статистика</button>
@@ -1460,10 +1495,15 @@ async function renderAdminDashboard() {
 async function renderAdminUsers() {
     try {
         const response = await apiRequest(`/admin/users?page=${currentAdminPage}&per_page=${adminItemsPerPage}`);
+        
+        // Проверяем структуру ответа
+        if (!response || !response.users) {
+            throw new Error('Некорректный ответ от сервера');
+        }
+        
         const users = response.users || [];
         const total = response.total || 0;
-        const totalPages = response.total_pages || 1;
-        
+        const totalPages = response.total_pages || 1;        
         let html = `
             <div class="card">
                 <div class="card-content">
@@ -1515,7 +1555,19 @@ async function renderAdminUsers() {
         return html;
     } catch (error) {
         console.error('Ошибка при загрузке пользователей:', error);
-        return '<p class="text-gray">Ошибка загрузки данных</p>';
+        return `
+            <div class="card">
+                <div class="card-content">
+                    <h2 class="mb-4">Управление пользователями</h2>
+                    <div class="empty-state">
+                        <div class="empty-state-icon">${getIcon('x')}</div>
+                        <p>Ошибка загрузки данных</p>
+                        <p style="color: #9ca3af; font-size: 0.875rem;">${error.message}</p>
+                        <button class="btn btn-primary mt-2" onclick="renderAdminPanel()">Повторить попытку</button>
+                    </div>
+                </div>
+            </div>
+        `;
     }
 }
 
@@ -1887,7 +1939,7 @@ async function renderSupplierPanel() {
         </div>`;
         return;
     }
-    
+
     try {
         const suppliers = await apiRequest('/farms');
         const supplier = suppliers.find(s => s.user_id === currentUser.id);
@@ -2240,24 +2292,22 @@ document.addEventListener('DOMContentLoaded', function() {
                 const userResponse = await apiRequest('/auth/me');
                 if (userResponse) {
                     currentUser = userResponse;
-                    // Редирект в зависимости от роли
+                    
+                    // Проверяем роль и редиректим
+                    closeAuthModal();
+                    renderNav();
+                    
                     if (userResponse.role === 'admin') {
-                        closeAuthModal();
-                        renderNav();
                         navigateTo('admin');
                         showToast('success', 'Добро пожаловать, администратор!');
                     } else if (userResponse.role === 'farmer') {
-                        closeAuthModal();
-                        renderNav();
                         navigateTo('supplierPanel');
                         showToast('success', 'Добро пожаловать, фермер!');
                     } else {
-                        closeAuthModal();
-                        renderNav();
                         navigateTo('home');
                         showToast('success', 'Добро пожаловать!');
                     }
-                    return;  // ← Выход из функции
+                    return;
                 }
             } catch (error) {
                 console.error('Ошибка авторизации:', error);
@@ -2273,19 +2323,28 @@ document.addEventListener('DOMContentLoaded', function() {
 
     checkAuth();
 
-    async function checkAuth() {
+        async function checkAuth() {
         try {
             const user = await apiRequest('/auth/me');
             if (user) {
                 currentUser = user;
                 renderNav();
-                // Если пользователь это админ и мы на главной, редирект в админ-панель
-                if (user.role === 'admin' && currentPage === 'home') {
-                    navigateTo('admin');
-                } 
-                // Если пользователь это фермер и мы на главной, редирект в панель фермера
-                else if (user.role === 'farmer' && currentPage === 'home') {
-                    navigateTo('supplierPanel');
+                
+                // Проверяем путь и роль для корректного редиректа
+                const currentPath = window.location.hash.substring(1) || 'home';
+                
+                if (user.role === 'admin') {
+                    // Если пытаемся зайти на админку без прав, показываем сообщение
+                    if (currentPath === 'admin' && !isAdmin()) {
+                        navigateTo('home');
+                        showToast('error', 'Доступ запрещен', 'Требуются права администратора');
+                    } else if (currentPage === 'home') {
+                        navigateTo('admin');
+                    }
+                } else if (user.role === 'farmer') {
+                    if (currentPage === 'home') {
+                        navigateTo('supplierPanel');
+                    }
                 }
             }
         } catch (error) {
