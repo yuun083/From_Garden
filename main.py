@@ -14,8 +14,6 @@ from app.api.order_items import router as order_items_router
 from app.api.reviews import router as reviews_router
 from app.api.subscriptions import router as subscriptions_router
 from app.api.web import router as web_router
-from app.api.admin import router as admin_router
-
 
 app = FastAPI(title="Прямо с грядки", version="1.0")
 
@@ -41,7 +39,6 @@ app.include_router(order_items_router)
 app.include_router(reviews_router)
 app.include_router(subscriptions_router)
 app.include_router(web_router)
-app.include_router(admin_router)
 
 @app.get("/")
 async def root(request: Request):

@@ -12,16 +12,201 @@ let currentAdminPage = 1;
 let adminItemsPerPage = 10;
 let mobileMenuOpen = false;
 
+// Кэш для данных
+let categoriesCache = null;
+let suppliersCache = null;
+
+
+
+// Добавим в начало файла после объявления переменных
+let currentUserCache = null;
+
+// Функция для получения информации о текущем пользователе
+async function getCurrentUser() {
+    if (!currentUserCache) {
+        try {
+            currentUserCache = await apiRequest('/auth/me');
+        } catch (error) {
+            console.error('Ошибка получения пользователя:', error);
+            currentUserCache = null;
+        }
+    }
+    return currentUserCache;
+}
+
+// Обновим функцию проверки авторизации в DOMContentLoaded
+async function checkAuth() {
+    try {
+        const user = await getCurrentUser();
+        if (user) {
+            currentUser = user;
+            renderNav();
+        }
+    } catch (error) {
+        currentUser = null;
+        renderNav();
+    }
+}
+
+
+
+
+
+// Функция для загрузки категорий с кэшированием
+async function loadCategories() {
+    if (!categoriesCache) {
+        try {
+            const categories = await apiRequest('/categories');
+            categoriesCache = categories || [];
+        } catch (error) {
+            console.error('Ошибка загрузки категорий:', error);
+            categoriesCache = [];
+        }
+    }
+    return categoriesCache;
+}
+
+// Функция для загрузки ферм/поставщиков с кэшированием
+async function loadSuppliers() {
+    if (!suppliersCache) {
+        try {
+            const suppliers = await apiRequest('/farms');
+            suppliersCache = suppliers || [];
+        } catch (error) {
+            console.error('Ошибка загрузки ферм:', error);
+            suppliersCache = [];
+        }
+    }
+    return suppliersCache;
+}
+
+// Функция для получения названия категории по ID
+function getCategoryNameById(categoryId, categories) {
+    if (!categoryId || !categories) return 'Без категории';
+    
+    // Если categoryId - это объект
+    if (typeof categoryId === 'object' && categoryId !== null) {
+        return categoryId.name || 'Без категории';
+    }
+    
+    // Если categoryId - это число (ID)
+    const category = categories.find(c => c.id === parseInt(categoryId));
+    return category ? category.name : 'Без категории';
+}
+
+// Функция для получения данных фермы по ID
+function getFarmById(farmId, farms) {
+    if (!farmId || !farms) return null;
+    
+    // Если farmId - это объект
+    if (typeof farmId === 'object' && farmId !== null) {
+        return farmId;
+    }
+    
+    // Если farmId - это число (ID)
+    const farm = farms.find(f => f.id === parseInt(farmId));
+    if (farm) {
+        // Добавляем поля для совместимости со старым кодом
+        farm.location = farm.address || 'Адрес не указан';
+        farm.rating = farm.rating_avg || 0;
+        return farm;
+    }
+    return null;
+}
+
+// Функция для получения URL изображения
+function getImageUrl(imageData, defaultImage = '/static/images/default-product.jpg') {
+    if (!imageData) return defaultImage;
+    
+    // Если это уже URL
+    if (typeof imageData === 'string' && 
+        (imageData.startsWith('http://') || imageData.startsWith('https://') || imageData.startsWith('/'))) {
+        return imageData;
+    }
+    
+    // Если это base64 данные из базы (предполагаем формат data:image/*;base64,...)
+    if (typeof imageData === 'string' && imageData.startsWith('data:image/')) {
+        return imageData;
+    }
+    
+    // Предполагаем, что изображения хранятся в /static/images/
+    return `/static/images/${imageData}`;
+}
+
+// Функция для преобразования данных фермы из модели в формат для отображения
+function formatFarmData(farm) {
+    if (!farm) return null;
+    
+    return {
+        id: farm.id,
+        name: farm.name,
+        description: farm.description || '',
+        location: farm.address || 'Адрес не указан',
+        address: farm.address,
+        image: farm.image ? `data:image/jpeg;base64,${farm.image}` : '/static/images/default-farm.jpg',
+        rating: farm.rating_avg || 0,
+        rating_avg: farm.rating_avg || 0,
+        user_id: farm.user_id,
+        contact_email: farm.contact_email || '',
+        contact_phone: farm.contact_phone || '',
+        status: farm.status || 'active',
+        featured: farm.featured || false // Добавляем поле, если его нет
+    };
+}
+
+// Функция для преобразования данных продукта из модели в формат для отображения
+function formatProductData(product, farms = null, categories = null) {
+    if (!product) return null;
+    
+    // Проверяем наличие продукта
+    const isInStock = product.in_stock === true || product.in_stock === 'true' || 
+                     (product.quantity !== undefined && product.quantity > 0);
+    
+    const formattedProduct = {
+        id: product.id,
+        name: product.name,
+        description: product.description || '',
+        price: product.price || 0,
+        unit: product.unit || 'шт',
+        quantity: product.quantity || 0,
+        in_stock: isInStock,
+        image: product.image ? `data:image/jpeg;base64,${product.image}` : '/static/images/default-product.jpg',
+        farm_id: product.farm_id,
+        category_id: product.category_id,
+        supplier_id: product.farm_id, // Для совместимости со старым кодом
+        category: product.category_id // Для совместимости со старым кодом
+    };
+    
+    // Если есть данные о ферме, добавляем их
+    if (farms && product.farm_id) {
+        const farm = farms.find(f => f.id === product.farm_id);
+        if (farm) {
+            formattedProduct.supplier = formatFarmData(farm);
+        }
+    }
+    
+    // Если есть данные о категории, добавляем их
+    if (categories && product.category_id) {
+        const category = categories.find(c => c.id === product.category_id);
+        if (category) {
+            formattedProduct.category_name = category.name;
+        }
+    }
+    
+    return formattedProduct;
+}
+
+
 function isAdmin() {
-    return currentUser && currentUser.role === 'admin';
+    return currentUser && currentUser.role && currentUser.role.name === 'admin';
 }
 
 function isFarmer() {
-    return currentUser && currentUser.role === 'farmer';
+    return currentUser && currentUser.role && currentUser.role.name === 'farmer';
 }
 
 function isCustomer() {
-    return currentUser && currentUser.role === 'customer';
+    return currentUser && currentUser.role && currentUser.role.name === 'customer';
 }
 
 function getIcon(name) {
@@ -51,72 +236,6 @@ function getIcon(name) {
     return iconMap[name] || '';
 }
 
-async function apiRequest(endpoint, options = {}) {
-    const headers = {
-        'Content-Type': 'application/json',
-        ...options.headers
-    };
-    
-    const config = {
-        ...options,
-        headers,
-        credentials: 'include'
-    };
-    
-    if (config.body && typeof config.body === 'object' && !(config.body instanceof FormData)) {
-        config.body = JSON.stringify(config.body);
-    }
-    
-    try {
-        const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
-        
-        if (response.status === 401) {
-            currentUser = null;
-            renderNav();
-            if (endpoint !== '/auth/me') {
-                showToast('error', 'Сессия истекла', 'Пожалуйста, войдите снова');
-            }
-            return null;
-        }
-
-        if (response.status === 403) {
-            if (endpoint.includes('/admin/')) {
-                navigateTo('home');
-                showToast('error', 'Доступ запрещен', 'Требуются права администратора');
-            }
-            return null;
-        }
-
-        if (!response.ok) {
-            const error = await response.json().catch(() => ({}));
-            let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-            
-            if (error.detail) {
-                if (Array.isArray(error.detail)) {
-                    errorMessage = error.detail.map(err => err.msg || err.detail || errorMessage).join(', ');
-                } else if (typeof error.detail === 'object') {
-                    errorMessage = error.detail.msg || error.detail.message || error.detail || errorMessage;
-                } else {
-                    errorMessage = error.detail || errorMessage;
-                }
-            }
-            
-            throw new Error(errorMessage);
-        }
-        
-        if (response.status === 204 || response.headers.get('content-length') === '0') {
-            return null;
-        }
-        
-        return await response.json();
-    } catch (error) {
-        if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
-            showToast('error', 'Ошибка соединения', 'Не удалось подключиться к серверу');
-        } else {
-            throw error;
-        }
-    }
-}
 
 function showToast(type, title, message = '') {
     const container = document.getElementById('toastContainer');
@@ -155,8 +274,6 @@ function closeToast(toastId) {
     }
 }
 
-
-
 function closeMobileMenu() {
     const mobileMenu = document.getElementById('mobileMenu');
     const menuBtn = document.getElementById('mobileMenuBtn');
@@ -170,8 +287,6 @@ function closeMobileMenu() {
         menuBtn.innerHTML = '<i class="fas fa-bars"></i>';
     }
 }
-
-
 
 function toggleMobileMenu(event) {
     if (event) event.stopPropagation();
@@ -191,17 +306,6 @@ function toggleMobileMenu(event) {
         }
     }
 }
-
- document.addEventListener('click', function(e) {
-        const mobileMenu = document.getElementById('mobileMenu');
-        const menuBtn = document.getElementById('mobileMenuBtn');
-        
-        if (mobileMenuOpen && mobileMenu && menuBtn) {
-            if (!mobileMenu.contains(e.target) && !menuBtn.contains(e.target)) {
-                closeMobileMenu();
-            }
-        }
-    });
 
 function navigateTo(page, data) {
     currentPage = page;
@@ -275,8 +379,8 @@ async function renderNav() {
     let cartCount = 0;
     try {
         const cartItems = await apiRequest('/cart');
-        if (cartItems) {
-            cartCount = cartItems.reduce((sum, item) => sum + item.quantity, 0);
+        if (cartItems && Array.isArray(cartItems)) {
+            cartCount = cartItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
         }
     } catch (error) {
         console.error('Ошибка при получении корзины:', error);
@@ -313,7 +417,7 @@ async function getProductInCartCount(productId) {
     if (!currentUser) return 0;
     try {
         const cartItems = await apiRequest('/cart');
-        if (cartItems) {
+        if (cartItems && Array.isArray(cartItems)) {
             const item = cartItems.find(item => item.product_id === parseInt(productId));
             return item ? item.quantity : 0;
         }
@@ -331,7 +435,8 @@ function openAuthModal() {
 
 function closeAuthModal() {
     document.getElementById('authModal').classList.remove('active');
-    document.getElementById('authForm').reset();
+    const authForm = document.getElementById('authForm');
+    if (authForm) authForm.reset();
     const errorDiv = document.getElementById('authError');
     if (errorDiv) errorDiv.style.display = 'none';
 }
@@ -378,21 +483,24 @@ async function renderHomePage() {
 
 async function renderFeaturedSuppliers() {
     try {
-        const suppliers = await apiRequest('/farms');
-        if (!suppliers) return;
+        const suppliers = await loadSuppliers();
+        if (!suppliers || !Array.isArray(suppliers)) return;
         
-        const featuredSuppliers = suppliers.filter(s => s.featured).slice(0, 3);
+        const featuredSuppliers = suppliers
+            .map(farm => formatFarmData(farm))
+            .filter(s => s && s.rating > 4.0) // Показываем фермы с рейтингом > 4
+            .slice(0, 3);
         
         const suppliersHTML = featuredSuppliers.map(supplier => `
             <div class="card clickable" onclick="navigateTo('supplierDetail', '${supplier.id}')">
-                <img src="${supplier.image || '/static/images/default-farm.jpg'}" alt="${supplier.name}" style="height: 200px;">
+                <img src="${supplier.image}" alt="${supplier.name}" style="height: 200px; object-fit: cover;">
                 <div class="card-content">
                     <div class="flex-between mb-2">
                         <h3 style="font-size: 1.125rem;">${supplier.name}</h3>
                         ${supplier.rating > 0 ? `
                             <div style="display: flex; align-items: center; gap: 0.25rem;">
                                 <span style="color: #fbbf24;">${getIcon('star')}</span>
-                                <span style="font-weight: 600; color: #92400e;">${supplier.rating}</span>
+                                <span style="font-weight: 600; color: #92400e;">${supplier.rating.toFixed(1)}</span>
                             </div>
                         ` : ''}
                     </div>
@@ -402,37 +510,58 @@ async function renderFeaturedSuppliers() {
             </div>
         `).join('');
         
-        document.getElementById('featuredSuppliers').innerHTML = suppliersHTML || '<p class="text-center text-gray">Нет ферм для показа</p>';
+        const featuredSuppliersEl = document.getElementById('featuredSuppliers');
+        if (featuredSuppliersEl) {
+            featuredSuppliersEl.innerHTML = suppliersHTML || '<p class="text-center text-gray">Нет ферм для показа</p>';
+        }
     } catch (error) {
         console.error('Ошибка при загрузке ферм:', error);
-        document.getElementById('featuredSuppliers').innerHTML = '<p class="text-center text-gray">Ошибка загрузки данных</p>';
+        const featuredSuppliersEl = document.getElementById('featuredSuppliers');
+        if (featuredSuppliersEl) {
+            featuredSuppliersEl.innerHTML = '<p class="text-center text-gray">Ошибка загрузки данных</p>';
+        }
     }
 }
 
 async function renderNewProducts() {
     try {
         const products = await apiRequest('/products');
-        if (!products) return;
+        const categories = await loadCategories();
+        const farms = await loadSuppliers();
         
-        const newProducts = [...products].reverse().slice(0, 4);
+        if (!products || !Array.isArray(products)) return;
+        
+        const newProducts = [...products]
+            .map(p => formatProductData(p, farms, categories))
+            .filter(p => p) // Убираем null
+            .reverse()
+            .slice(0, 4);
+        
+        console.log('Новые продукты для показа:', newProducts.length);
         
         const productsHTML = await Promise.all(newProducts.map(async (product) => {
+            if (!product) return '';
+            
             const inCartCount = await getProductInCartCount(product.id);
+            const categoryName = product.category_name || getCategoryNameById(product.category_id, categories);
+            const unit = product.unit || 'шт';
+            
             return `
                 <div class="card" onclick="navigateTo('productDetail', '${product.id}')" style="cursor: pointer;">
-                    <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}">
+                    <img src="${product.image}" alt="${product.name}" style="height: 200px; object-fit: cover;">
                     <div class="card-content">
                         <div style="margin-bottom: 0.5rem;">
-                            <span class="badge badge-green">${product.category}</span>
+                            <span class="badge badge-green">${categoryName}</span>
+                            ${!product.in_stock ? '<span class="badge badge-red" style="margin-left: 0.5rem;">Нет в наличии</span>' : ''}
                         </div>
                         <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">${product.name}</h3>
                         <div class="flex-between">
                             <div>
-                                <span class="product-price">${product.price} ₽</span>
-                                <span class="text-gray" style="font-size: 0.875rem;"> / ${product.unit}</span>
+                                <span class="product-price">${product.price || 0} ₽</span>
+                                <span class="text-gray" style="font-size: 0.875rem;"> / ${unit}</span>
                             </div>
                             ${currentUser ? `
-                                <button class="btn ${inCartCount > 0 ? 'btn-green' : 'btn-primary'} btn-small" onclick="event.stopPropagation(); addToCart('${product.id}')">
+                                <button class="btn ${inCartCount > 0 ? 'btn-green' : 'btn-primary'} btn-small" onclick="event.stopPropagation(); addToCart('${product.id}')" ${!product.in_stock ? 'disabled style="opacity: 0.5;"' : ''}>
                                     ${inCartCount > 0 ? `${getIcon('check')} ${inCartCount} шт` : '+ В корзину'}
                                 </button>
                             ` : ''}
@@ -442,20 +571,33 @@ async function renderNewProducts() {
             `;
         }));
         
-        document.getElementById('newProducts').innerHTML = productsHTML.join('') || '<p class="text-center text-gray">Нет новинок</p>';
+        const newProductsEl = document.getElementById('newProducts');
+        if (newProductsEl) {
+            newProductsEl.innerHTML = productsHTML.join('') || '<p class="text-center text-gray">Нет новинок</p>';
+        }
     } catch (error) {
-        console.error('Ошибка при загрузке продуктов:', error);
-        document.getElementById('newProducts').innerHTML = '<p class="text-center text-gray">Ошибка загрузки данных</p>';
+        console.error('Ошибка при загрузке новых продуктов:', error);
+        const newProductsEl = document.getElementById('newProducts');
+        if (newProductsEl) {
+            newProductsEl.innerHTML = '<p class="text-center text-gray">Ошибка загрузки данных</p>';
+        }
     }
 }
 
 async function renderHomeProducts() {
     try {
         const products = await apiRequest('/products');
-        const categories = await apiRequest('/categories');
+        const categories = await loadCategories();
+        const farms = await loadSuppliers();
         
-        if (!products || !categories) return;
+        if (!products || !Array.isArray(products)) {
+            console.error('Продукты не получены или не массив:', products);
+            return;
+        }
         
+        console.log('Получено продуктов:', products.length);
+        
+        // Создаем список категорий из данных
         const categoriesList = ['Все', ...categories.map(c => c.name)];
         
         const filtersHTML = categoriesList.map(cat => 
@@ -467,29 +609,41 @@ async function renderHomeProducts() {
         }
 
         let filteredProducts = selectedCategory === 'Все' 
-            ? products 
-            : products.filter(p => p.category === selectedCategory);
+            ? products.map(p => formatProductData(p, farms, categories))
+            : products
+                .map(p => formatProductData(p, farms, categories))
+                .filter(p => p && p.category_name === selectedCategory);
+        
+        // Отладочная информация
+        console.log('Отфильтровано продуктов:', filteredProducts.length);
+        console.log('Пример продукта:', filteredProducts[0]);
         
         filteredProducts = filteredProducts.slice(0, 8);
 
         const productsHTML = await Promise.all(filteredProducts.map(async (product) => {
+            if (!product) return '';
+            
             const inCartCount = await getProductInCartCount(product.id);
+            const categoryName = product.category_name || getCategoryNameById(product.category_id, categories);
+            const unit = product.unit || 'шт';
+            
             return `
                 <div class="card" onclick="navigateTo('productDetail', '${product.id}')" style="cursor: pointer;">
-                    <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}">
+                    <img src="${product.image}" alt="${product.name}" style="height: 200px; object-fit: cover;">
                     <div class="card-content">
                         <div style="margin-bottom: 0.5rem;">
-                            <span class="badge badge-green">${product.category}</span>
+                            <span class="badge badge-green">${categoryName}</span>
+                            ${!product.in_stock ? '<span class="badge badge-red" style="margin-left: 0.5rem;">Нет в наличии</span>' : ''}
                         </div>
                         <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">${product.name}</h3>
-                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${product.description || ''}</p>
+                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${product.description?.substring(0, 80) || ''}${product.description && product.description.length > 80 ? '...' : ''}</p>
                         <div class="flex-between">
                             <div>
-                                <span class="product-price">${product.price} ₽</span>
-                                <span class="text-gray" style="font-size: 0.875rem;"> / ${product.unit}</span>
+                                <span class="product-price">${product.price || 0} ₽</span>
+                                <span class="text-gray" style="font-size: 0.875rem;"> / ${unit}</span>
                             </div>
                             ${currentUser ? `
-                                <button class="btn ${inCartCount > 0 ? 'btn-green' : 'btn-primary'} btn-small" onclick="event.stopPropagation(); addToCart('${product.id}')">
+                                <button class="btn ${inCartCount > 0 ? 'btn-green' : 'btn-primary'} btn-small" onclick="event.stopPropagation(); addToCart('${product.id}')" ${!product.in_stock ? 'disabled style="opacity: 0.5;"' : ''}>
                                     ${inCartCount > 0 ? `${getIcon('check')} ${inCartCount} шт` : '+ В корзину'}
                                 </button>
                             ` : ''}
@@ -515,9 +669,15 @@ async function renderHomeProducts() {
 async function renderProducts() {
     try {
         const products = await apiRequest('/products');
-        const categories = await apiRequest('/categories');
+        const categories = await loadCategories();
+        const farms = await loadSuppliers();
         
-        if (!products || !categories) return;
+        if (!products || !Array.isArray(products)) {
+            console.error('Продукты не получены или не массив:', products);
+            return;
+        }
+        
+        console.log('Получено продуктов для страницы продуктов:', products.length);
         
         const categoriesList = ['Все', ...categories.map(c => c.name)];
         
@@ -529,28 +689,38 @@ async function renderProducts() {
             document.getElementById('categoryFilters').innerHTML = filtersHTML;
         }
 
-        const filteredProducts = selectedCategory === 'Все' 
-            ? products 
-            : products.filter(p => p.category === selectedCategory);
+        let filteredProducts = selectedCategory === 'Все' 
+            ? products.map(p => formatProductData(p, farms, categories))
+            : products
+                .map(p => formatProductData(p, farms, categories))
+                .filter(p => p && p.category_name === selectedCategory);
+
+        console.log('Отфильтровано продуктов для страницы:', filteredProducts.length);
 
         const productsHTML = await Promise.all(filteredProducts.map(async (product) => {
+            if (!product) return '';
+            
             const inCartCount = await getProductInCartCount(product.id);
+            const categoryName = product.category_name || getCategoryNameById(product.category_id, categories);
+            const unit = product.unit || 'шт';
+            
             return `
                 <div class="card" onclick="navigateTo('productDetail', '${product.id}')" style="cursor: pointer;">
-                    <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}">
+                    <img src="${product.image}" alt="${product.name}" style="height: 200px; object-fit: cover;">
                     <div class="card-content">
                         <div style="margin-bottom: 0.5rem;">
-                            <span class="badge badge-green">${product.category}</span>
+                            <span class="badge badge-green">${categoryName}</span>
+                            ${!product.in_stock ? '<span class="badge badge-red" style="margin-left: 0.5rem;">Нет в наличии</span>' : ''}
                         </div>
                         <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">${product.name}</h3>
-                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${product.description || ''}</p>
+                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${product.description?.substring(0, 80) || ''}${product.description && product.description.length > 80 ? '...' : ''}</p>
                         <div class="flex-between">
                             <div>
-                                <span class="product-price">${product.price} ₽</span>
-                                <span class="text-gray" style="font-size: 0.875rem;"> / ${product.unit}</span>
+                                <span class="product-price">${product.price || 0} ₽</span>
+                                <span class="text-gray" style="font-size: 0.875rem;"> / ${unit}</span>
                             </div>
                             ${currentUser ? `
-                                <button class="btn ${inCartCount > 0 ? 'btn-green' : 'btn-primary'} btn-small" onclick="event.stopPropagation(); addToCart('${product.id}')">
+                                <button class="btn ${inCartCount > 0 ? 'btn-green' : 'btn-primary'} btn-small" onclick="event.stopPropagation(); addToCart('${product.id}')" ${!product.in_stock ? 'disabled style="opacity: 0.5;"' : ''}>
                                     ${inCartCount > 0 ? `${getIcon('check')} ${inCartCount} шт` : '+ В корзину'}
                                 </button>
                             ` : ''}
@@ -573,12 +743,13 @@ async function renderProducts() {
     }
 }
 
-function filterCategory(category, page) {
+async function filterCategory(category, page) {
     selectedCategory = category;
+    
     if (page === 'home') {
-        renderHomeProducts();
+        await renderHomeProducts();
     } else {
-        renderProducts();
+        await renderProducts();
     }
 }
 
@@ -617,27 +788,34 @@ async function addToCart(productId, quantity = 1) {
 
 async function renderSuppliers() {
     try {
-        const suppliers = await apiRequest('/farms');
-        if (!suppliers) return;
+        const suppliers = await loadSuppliers();
+        if (!suppliers || !Array.isArray(suppliers)) return;
         
-        const suppliersHTML = suppliers.map(supplier => `
-            <div class="card clickable" onclick="navigateTo('supplierDetail', '${supplier.id}')">
-                <img src="${supplier.image || '/static/images/default-farm.jpg'}" alt="${supplier.name}" style="height: 250px;">
-                <div class="card-content">
-                    <div class="flex-between mb-2">
-                        <h3 style="font-size: 1.125rem;">${supplier.name}</h3>
-                        ${supplier.rating > 0 ? `
-                            <div style="display: flex; align-items: center; gap: 0.25rem; background: #fef3c7; padding: 0.25rem 0.5rem; border-radius: 0.25rem;">
-                                <span style="color: #fbbf24;">${getIcon('star')}</span>
-                                <span style="font-weight: 600; color: #92400e;">${supplier.rating}</span>
-                            </div>
-                        ` : ''}
+        const formattedSuppliers = suppliers.map(farm => formatFarmData(farm));
+        
+        const suppliersHTML = formattedSuppliers.map(supplier => {
+            const location = supplier.location || 'Местоположение не указано';
+            const description = supplier.description || '';
+            
+            return `
+                <div class="card clickable" onclick="navigateTo('supplierDetail', '${supplier.id}')">
+                    <img src="${supplier.image}" alt="${supplier.name}" style="height: 250px; object-fit: cover;">
+                    <div class="card-content">
+                        <div class="flex-between mb-2">
+                            <h3 style="font-size: 1.125rem;">${supplier.name}</h3>
+                            ${supplier.rating > 0 ? `
+                                <div style="display: flex; align-items: center; gap: 0.25rem; background: #fef3c7; padding: 0.25rem 0.5rem; border-radius: 0.25rem;">
+                                    <span style="color: #fbbf24;">${getIcon('star')}</span>
+                                    <span style="font-weight: 600; color: #92400e;">${supplier.rating.toFixed(1)}</span>
+                                </div>
+                            ` : ''}
+                        </div>
+                        <p class="text-gray" style="font-size: 0.875rem; margin-bottom: 0.75rem;">${description.substring(0, 100)}${description.length > 100 ? '...' : ''}</p>
+                        <p class="text-gray" style="font-size: 0.875rem; margin-bottom: 1rem;">${getIcon('mapPin')} ${location}</p>
                     </div>
-                    <p class="text-gray" style="font-size: 0.875rem; margin-bottom: 0.75rem;">${supplier.description || ''}</p>
-                    <p class="text-gray" style="font-size: 0.875rem; margin-bottom: 1rem;">${getIcon('mapPin')} ${supplier.location}</p>
                 </div>
-            </div>
-        `).join('');
+            `;
+        }).join('');
         
         const suppliersGrid = document.getElementById('suppliersGrid');
         if (suppliersGrid) {
@@ -654,10 +832,8 @@ async function renderSuppliers() {
 
 async function renderSupplierDetail() {
     try {
-        // В вашем файле farms.py нет GET /farms/{id} эндпоинта
-        // Вместо этого будем получать все фермы и фильтровать на клиенте
-        const suppliers = await apiRequest('/farms');
-        if (!suppliers) return;
+        const suppliers = await loadSuppliers();
+        if (!suppliers || !Array.isArray(suppliers)) return;
         
         const supplier = suppliers.find(s => s.id === parseInt(selectedSupplierId));
         if (!supplier) {
@@ -665,107 +841,115 @@ async function renderSupplierDetail() {
             return;
         }
         
+        const formattedSupplier = formatFarmData(supplier);
+        
         const products = await apiRequest('/products');
         const reviews = await apiRequest('/reviews');
+        const categories = await loadCategories();
+        const farms = await loadSuppliers();
         
-        const supplierProducts = products ? products.filter(p => p.supplier_id === parseInt(selectedSupplierId)) : [];
-        const supplierReviews = reviews ? reviews.filter(r => r.supplier_id === parseInt(selectedSupplierId)) : [];
+        const supplierProducts = products && Array.isArray(products) 
+            ? products
+                .filter(p => p.farm_id === parseInt(selectedSupplierId))
+                .map(p => formatProductData(p, farms, categories))
+            : [];
+        
+        const supplierReviews = reviews && Array.isArray(reviews) 
+            ? reviews.filter(r => r.farm_id === parseInt(selectedSupplierId))
+            : [];
 
         let html = `
             <div class="card mb-4">
-                <img src="${supplier.image || '/static/images/default-farm.jpg'}" alt="${supplier.name}" style="height: 400px;">
+                <img src="${formattedSupplier.image}" alt="${formattedSupplier.name}" style="width: 100%; height: 400px; object-fit: cover;">
                 <div class="card-content">
                     <div class="flex-between mb-2">
                         <div>
-                            <h1>${supplier.name}</h1>
+                            <h1>${formattedSupplier.name}</h1>
                             <div style="display: flex; align-items: center; gap: 0.5rem; color: #6b7280;">
                                 ${getIcon('mapPin')}
-                                <span>${supplier.location}</span>
+                                <span>${formattedSupplier.location}</span>
                             </div>
                         </div>
-                        ${supplier.rating > 0 ? `
+                        ${formattedSupplier.rating > 0 ? `
                             <div style="display: flex; align-items: center; gap: 0.5rem; background: #fef3c7; padding: 0.75rem 1rem; border-radius: 0.5rem;">
                                 <span style="color: #fbbf24; font-size: 1.5rem;">★</span>
-                                <span style="font-size: 1.5rem;">${supplier.rating}</span>
+                                <span style="font-size: 1.5rem;">${formattedSupplier.rating.toFixed(1)}</span>
                             </div>
                         ` : ''}
                     </div>
-                    <p style="color: #374151; line-height: 1.6;">${supplier.description || ''}</p>
+                    <p style="color: #374151; line-height: 1.6;">${formattedSupplier.description || ''}</p>
                 </div>
             </div>
         `;
 
         if (supplierProducts.length > 0) {
             html += `
-                <h2 class="mb-2">Продукты от ${supplier.name}</h2>
+                <h2 class="mb-2">Продукты от ${formattedSupplier.name}</h2>
                 <div class="grid grid-4 mb-4">
-                    ${supplierProducts.map(product => `
-                        <div class="card" onclick="navigateTo('productDetail', '${product.id}')" style="cursor: pointer;">
-                            <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}" style="height: 150px;">
-                            <div class="card-content">
-                                <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">${product.name}</h3>
-                                <p class="product-price">${product.price} ₽ <span class="text-gray" style="font-size: 0.875rem;">/ ${product.unit}</span></p>
+                    ${supplierProducts.map(product => {
+                        const categoryName = product.category_name || getCategoryNameById(product.category_id, categories);
+                        return `
+                            <div class="card" onclick="navigateTo('productDetail', '${product.id}')" style="cursor: pointer;">
+                                <img src="${product.image}" alt="${product.name}" style="height: 150px; object-fit: cover;">
+                                <div class="card-content">
+                                    <h3 style="font-size: 1rem; margin-bottom: 0.25rem;">${product.name}</h3>
+                                    <p class="product-price">${product.price || 0} ₽ <span class="text-gray" style="font-size: 0.875rem;">/ ${product.unit || 'шт'}</span></p>
+                                    <div style="margin-top: 0.5rem;">
+                                        <span class="badge badge-green">${categoryName}</span>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    `).join('')}
+                        `;
+                    }).join('')}
                 </div>
             `;
         }
 
-        html += `
-            <div class="card">
-                <div class="card-content">
-                    <div class="flex-between mb-4">
-                        <h2>Отзывы (${supplierReviews.length})</h2>
-                        ${currentUser 
-                            ? `<button class="btn btn-primary" onclick="showReviewForm()">Оставить отзыв</button>` 
-                            : `<button class="btn btn-secondary" onclick="openAuthModal()">Войти, чтобы оставить отзыв</button>`
-                        }
-                    </div>
-
-                    <div id="reviewFormContainer" style="display: none; background: #f9fafb; padding: 1rem; border-radius: 0.5rem; margin-bottom: 1.5rem;">
-                        <h3 class="mb-2">Новый отзыв</h3>
-                        <form onsubmit="submitReview(event)">
-                            <div class="form-group">
-                                <label class="form-label">Оценка</label>
-                                <div class="stars" id="ratingStars" style="font-size: 2rem;">
-                                    <span class="star" onclick="setRating(1)">☆</span>
-                                    <span class="star" onclick="setRating(2)">☆</span>
-                                    <span class="star" onclick="setRating(3)">☆</span>
-                                    <span class="star" onclick="setRating(4)">☆</span>
-                                    <span class="star" onclick="setRating(5)">☆</span>
+        if (supplierReviews.length > 0) {
+            html += `
+                <h2 class="mb-2">Отзывы</h2>
+                <div class="card mb-4">
+                    <div class="card-content">
+                        ${supplierReviews.map(review => `
+                            <div style="border-bottom: 1px solid #e5e7eb; padding: 1rem 0; ${review === supplierReviews[supplierReviews.length - 1] ? 'border-bottom: none;' : ''}">
+                                <div class="flex-between mb-2">
+                                    <div>
+                                        <p style="font-weight: 600;">${review.user_name || 'Анонимный пользователь'}</p>
+                                        <p style="font-size: 0.875rem; color: #6b7280;">${new Date(review.created_at).toLocaleDateString('ru-RU')}</p>
+                                    </div>
+                                    <div style="color: #fbbf24;">${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}</div>
                                 </div>
+                                <p style="color: #374151;">${review.comment || ''}</p>
                             </div>
-                            <div class="form-group">
-                                <label class="form-label">Комментарий</label>
-                                <textarea class="form-input" id="reviewComment" rows="4" placeholder="Поделитесь впечатлениями о продукции..." required></textarea>
+                        `).join('')}
+                    </div>
+                </div>
+            `;
+        }
+
+        // Кнопка для добавления отзыва
+        if (currentUser && !isFarmer()) {
+            html += `
+                <button class="btn btn-primary" onclick="showReviewForm()">Оставить отзыв</button>
+                <div id="reviewFormContainer" style="display: none; margin-top: 1rem;">
+                    <form onsubmit="submitReview(event)" class="card">
+                        <div class="card-content">
+                            <h3 class="mb-2">Ваш отзыв</h3>
+                            <div id="ratingStars" class="mb-2">
+                                ${[1, 2, 3, 4, 5].map(i => `
+                                    <span class="star" onclick="setRating(${i})" style="cursor: pointer; font-size: 1.5rem;">${i <= currentRating ? '★' : '☆'}</span>
+                                `).join('')}
                             </div>
+                            <textarea id="reviewComment" class="form-input mb-2" rows="3" placeholder="Ваш комментарий"></textarea>
                             <div class="flex gap-1">
                                 <button type="submit" class="btn btn-primary">Отправить</button>
                                 <button type="button" class="btn btn-secondary" onclick="hideReviewForm()">Отмена</button>
                             </div>
-                        </form>
-                    </div>
-
-                    <div id="reviewsList">
-                        ${supplierReviews.length > 0 ? supplierReviews.map(review => `
-                            <div class="review-item">
-                                <div class="flex-between mb-1">
-                                    <div>
-                                        <p style="font-weight: 600;">${review.user_name}</p>
-                                        <p style="font-size: 0.875rem; color: #6b7280;">${new Date(review.created_at).toLocaleDateString('ru-RU')}</p>
-                                    </div>
-                                    <div class="stars">
-                                        ${'★'.repeat(review.rating)}${'☆'.repeat(5 - review.rating)}
-                                    </div>
-                                </div>
-                                <p style="color: #374151;">${review.comment}</p>
-                            </div>
-                        `).join('') : '<p class="text-center text-gray" style="padding: 2rem 0;">Пока нет отзывов. Станьте первым!</p>'}
-                    </div>
+                        </div>
+                    </form>
                 </div>
-            </div>
-        `;
+            `;
+        }
 
         document.getElementById('supplierDetail').innerHTML = html;
     } catch (error) {
@@ -781,7 +965,8 @@ function showReviewForm() {
         star.textContent = index < currentRating ? '★' : '☆';
     });
     document.getElementById('reviewFormContainer').style.display = 'block';
-    document.getElementById('reviewComment').value = '';
+    const reviewComment = document.getElementById('reviewComment');
+    if (reviewComment) reviewComment.value = '';
 }
 
 function hideReviewForm() {
@@ -799,13 +984,14 @@ function setRating(rating) {
 async function submitReview(e) {
     e.preventDefault();
     
-    const comment = document.getElementById('reviewComment').value;
+    const commentInput = document.getElementById('reviewComment');
+    const comment = commentInput ? commentInput.value : '';
 
     try {
         await apiRequest('/reviews', {
             method: 'POST',
             body: {
-                supplier_id: parseInt(selectedSupplierId),
+                farm_id: parseInt(selectedSupplierId),
                 rating: currentRating,
                 comment: comment
             }
@@ -828,32 +1014,53 @@ async function renderProductDetail() {
             return;
         }
         
-        const suppliers = await apiRequest('/farms');
+        const farms = await loadSuppliers();
+        const categories = await loadCategories();
         
-        const supplier = suppliers ? suppliers.find(s => s.id === product.supplier_id) : null;
-        const inCartCount = await getProductInCartCount(product.id);
+        const formattedProduct = formatProductData(product, farms, categories);
+        const farm = getFarmById(formattedProduct.farm_id, farms);
+        const inCartCount = await getProductInCartCount(formattedProduct.id);
+        
+        const categoryName = formattedProduct.category_name || getCategoryNameById(formattedProduct.category_id, categories);
+        const unit = formattedProduct.unit || 'шт';
+        const price = formattedProduct.price || 0;
 
         let html = `
             <div style="display: grid; grid-template-columns: 1fr 400px; gap: 3rem; margin-top: 2rem;">
                 <div>
-                    <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}" class="product-main-image">
+                    <img src="${formattedProduct.image}" alt="${formattedProduct.name}" class="product-main-image" style="width: 100%; height: auto; border-radius: 0.5rem;">
                     
                     <div class="card mb-4">
                         <div class="card-content">
                             <h2>Описание</h2>
-                            <p style="color: #374151; line-height: 1.6; margin-top: 1rem;">${product.description || ''}</p>
+                            <p style="color: #374151; line-height: 1.6; margin-top: 1rem;">${formattedProduct.description || ''}</p>
                             
                             <div style="margin-top: 2rem;">
                                 <h3 class="mb-2">Характеристики</h3>
                                 <div class="product-meta">
                                     <div class="product-meta-item">
                                         ${getIcon('package')}
-                                        <span>Категория: ${product.category}</span>
+                                        <span>Категория: ${categoryName}</span>
                                     </div>
                                     <div class="product-meta-item">
                                         ${getIcon('store')}
-                                        <span>Ферма: ${supplier?.name || 'Неизвестно'}</span>
+                                        <span>Ферма: ${farm?.name || 'Неизвестно'}</span>
                                     </div>
+                                    <div class="product-meta-item">
+                                        ${getIcon('package')}
+                                        <span>В наличии: ${formattedProduct.quantity || 0} ${unit}</span>
+                                    </div>
+                                    ${formattedProduct.in_stock ? `
+                                        <div class="product-meta-item">
+                                            ${getIcon('check')}
+                                            <span style="color: #16a34a;">В наличии</span>
+                                        </div>
+                                    ` : `
+                                        <div class="product-meta-item">
+                                            ${getIcon('x')}
+                                            <span style="color: #ef4444;">Нет в наличии</span>
+                                        </div>
+                                    `}
                                 </div>
                             </div>
                         </div>
@@ -864,34 +1071,28 @@ async function renderProductDetail() {
                     <div class="card product-info-card">
                         <div class="card-content">
                             <div class="flex-between mb-2">
-                                <h1 style="margin-bottom: 0;">${product.name}</h1>
-                                ${product.rating > 0 ? `
-                                    <div style="display: flex; align-items: center; gap: 0.25rem;">
-                                        <span style="color: #fbbf24;">${getIcon('star')}</span>
-                                        <span style="font-weight: 600;">${product.rating}</span>
-                                    </div>
-                                ` : ''}
+                                <h1 style="margin-bottom: 0;">${formattedProduct.name}</h1>
                             </div>
                             
                             <div style="margin-bottom: 0.5rem;">
-                                <span class="badge badge-green">${product.category}</span>
+                                <span class="badge badge-green">${categoryName}</span>
                             </div>
                             
-                            ${supplier ? `
+                            ${farm ? `
                                 <div class="flex gap-1 mb-3" style="align-items: center;">
                                     ${getIcon('store')}
                                     <span style="color: #6b7280;">
                                         Производитель: 
-                                        <a href="javascript:void(0)" onclick="navigateTo('supplierDetail', '${supplier.id}')" 
+                                        <a href="javascript:void(0)" onclick="navigateTo('supplierDetail', '${farm.id}')" 
                                            style="color: #16a34a; text-decoration: none;">
-                                            ${supplier.name}
+                                            ${farm.name}
                                         </a>
                                     </span>
                                 </div>
                             ` : ''}
                             
                             <div class="product-price" style="font-size: 2rem; margin-bottom: 1.5rem;">
-                                ${product.price} ₽ <span class="text-gray" style="font-size: 1rem;">/ ${product.unit}</span>
+                                ${price} ₽ <span class="text-gray" style="font-size: 1rem;">/ ${unit}</span>
                             </div>
                             
                             ${inCartCount > 0 ? `
@@ -904,12 +1105,16 @@ async function renderProductDetail() {
                             <div class="product-actions">
                                 <div class="product-quantity">
                                     <button class="btn btn-secondary" onclick="updateProductQuantity(-1)">-</button>
-                                    <input type="number" id="productQuantity" value="1" min="1" max="100">
+                                    <input type="number" id="productQuantity" value="1" min="1" max="${formattedProduct.quantity || 100}">
                                     <button class="btn btn-secondary" onclick="updateProductQuantity(1)">+</button>
                                 </div>
-                                <button class="btn btn-primary flex-1" onclick="addToCartFromProductPage()">
-                                    ${inCartCount > 0 ? 'Добавить ещё' : 'В корзину'}
-                                </button>
+                                ${formattedProduct.in_stock ? `
+                                    <button class="btn btn-primary flex-1" onclick="addToCartFromProductPage()">
+                                        ${inCartCount > 0 ? 'Добавить ещё' : 'В корзину'}
+                                    </button>
+                                ` : `
+                                    <button class="btn btn-secondary flex-1" disabled>Нет в наличии</button>
+                                `}
                             </div>
                             
                             <div style="border-top: 1px solid #e5e7eb; margin-top: 1.5rem; padding-top: 1.5rem;">
@@ -942,7 +1147,8 @@ function updateProductQuantity(change) {
     const input = document.getElementById('productQuantity');
     if (!input) return;
     let value = parseInt(input.value) || 1;
-    value = Math.max(1, value + change);
+    const max = parseInt(input.max) || 100;
+    value = Math.max(1, Math.min(max, value + change));
     input.value = value;
 }
 
@@ -956,12 +1162,12 @@ function addToCartFromProductPage() {
 async function renderSubscriptions() {
     try {
         const subscriptions = await apiRequest('/subscriptions/plans');
-        if (!subscriptions) return;
+        if (!subscriptions || !Array.isArray(subscriptions)) return;
         
         const subscriptionsHTML = subscriptions.map(sub => {
             return `
                 <div class="card">
-                    <img src="${sub.image || '/static/images/default-subscription.jpg'}" alt="${sub.name}" style="height: 250px;">
+                    <img src="${sub.image || '/static/images/default-subscription.jpg'}" alt="${sub.name}" style="height: 250px; object-fit: cover;">
                     <div class="card-content">
                         <div class="flex-between mb-2">
                             <h3>${sub.name}</h3>
@@ -970,7 +1176,7 @@ async function renderSubscriptions() {
                         <div class="flex-between">
                             <div>
                                 <span style="font-size: 1.5rem; color: #16a34a; font-weight: 700;">${sub.price} ₽</span>
-                                <span class="text-gray" style="font-size: 0.875rem;"> / неделя</span>
+                                <span class="text-gray" style="font-size: 0.875rem;"> / ${sub.delivery_frequency || 'неделя'}</span>
                             </div>
                             ${currentUser ? `
                                 <button class="btn btn-primary" onclick="toggleSubscription('${sub.id}')">
@@ -983,10 +1189,16 @@ async function renderSubscriptions() {
             `;
         }).join('');
 
-        document.getElementById('subscriptionsGrid').innerHTML = subscriptionsHTML || '<p class="text-center text-gray">Нет доступных подписок</p>';
+        const subscriptionsGrid = document.getElementById('subscriptionsGrid');
+        if (subscriptionsGrid) {
+            subscriptionsGrid.innerHTML = subscriptionsHTML || '<p class="text-center text-gray">Нет доступных подписок</p>';
+        }
     } catch (error) {
         console.error('Ошибка при загрузке подписок:', error);
-        document.getElementById('subscriptionsGrid').innerHTML = '<p class="text-center text-gray">Ошибка загрузки данных</p>';
+        const subscriptionsGrid = document.getElementById('subscriptionsGrid');
+        if (subscriptionsGrid) {
+            subscriptionsGrid.innerHTML = '<p class="text-center text-gray">Ошибка загрузки данных</p>';
+        }
     }
 }
 
@@ -1009,7 +1221,7 @@ async function toggleSubscription(subId) {
         
         showToast('success', 'Подписка активирована');
     } catch (error) {
-        showToast('error', 'Ошибка', 'Не удалось активировать подписку');
+        showToast('error', 'Ошибка', error.message || 'Не удалось активировать подписку');
         console.error('Ошибка при активации подписки:', error);
     }
 }
@@ -1029,8 +1241,10 @@ async function renderCart() {
     try {
         const cartItems = await apiRequest('/cart');
         const products = await apiRequest('/products');
+        const categories = await loadCategories();
+        const farms = await loadSuppliers();
 
-        if (!cartItems || cartItems.length === 0) {
+        if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
             document.getElementById('cartContent').innerHTML = `
                 <div class="empty-state">
                     <div class="empty-state-icon">${getIcon('shoppingCart')}</div>
@@ -1042,7 +1256,9 @@ async function renderCart() {
         }
 
         const total = cartItems.reduce((sum, item) => {
-            const product = products ? products.find(p => p.id === item.product_id) : null;
+            const product = products && Array.isArray(products) 
+                ? formatProductData(products.find(p => p.id === item.product_id), farms, categories)
+                : null;
             return sum + (product ? product.price * item.quantity : 0);
         }, 0);
 
@@ -1050,16 +1266,19 @@ async function renderCart() {
             <div class="cart-layout" style="display: grid; grid-template-columns: 1fr 400px; gap: 2rem; margin-top: 2rem;">
                 <div>
                     ${cartItems.map(item => {
-                        const product = products ? products.find(p => p.id === item.product_id) : null;
+                        const product = products && Array.isArray(products) 
+                            ? formatProductData(products.find(p => p.id === item.product_id), farms, categories)
+                            : null;
                         if (!product) return '';
+                        const categoryName = product.category_name || getCategoryNameById(product.category_id, categories);
                         return `
                             <div class="cart-item">
-                                <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}">
+                                <img src="${product.image}" alt="${product.name}" style="width: 100px; height: 100px; object-fit: cover;">
                                 <div style="flex: 1;">
                                     <div class="flex-between mb-1">
                                         <div>
                                             <p style="font-weight: 600;">${product.name}</p>
-                                            <p style="font-size: 0.875rem; color: #6b7280;">${product.category}</p>
+                                            <p style="font-size: 0.875rem; color: #6b7280;">${categoryName}</p>
                                         </div>
                                         <button class="btn btn-secondary btn-small" onclick="removeFromCart('${product.id}')" style="color: #991b1b;">${getIcon('trash')}</button>
                                     </div>
@@ -1071,7 +1290,7 @@ async function renderCart() {
                                         </div>
                                         <div style="text-align: right;">
                                             <p style="font-size: 0.875rem; color: #6b7280;">${product.price} ₽ / ${product.unit}</p>
-                                            <p class="text-green" style="font-weight: 600;">${product.price * item.quantity} ₽</p>
+                                            <p class="text-green" style="font-weight: 600;">${(product.price * item.quantity).toFixed(2)} ₽</p>
                                         </div>
                                     </div>
                                 </div>
@@ -1102,7 +1321,7 @@ async function renderCart() {
                             <div style="border-top: 1px solid #e5e7eb; padding-top: 1rem; margin-top: 1rem;">
                                 <div class="flex-between mb-1">
                                     <span class="text-gray">Товары (${cartItems.length})</span>
-                                    <span>${total} ₽</span>
+                                    <span>${total.toFixed(2)} ₽</span>
                                 </div>
                                 <div class="flex-between mb-1">
                                     <span class="text-gray">Доставка</span>
@@ -1110,7 +1329,7 @@ async function renderCart() {
                                 </div>
                                 <div class="flex-between mt-2" style="padding-top: 0.5rem; border-top: 1px solid #e5e7eb;">
                                     <span style="font-weight: 600;">Итого</span>
-                                    <span class="text-green" style="font-size: 1.5rem; font-weight: 700;">${total} ₽</span>
+                                    <span class="text-green" style="font-size: 1.5rem; font-weight: 700;">${total.toFixed(2)} ₽</span>
                                 </div>
                             </div>
 
@@ -1135,7 +1354,9 @@ async function renderCart() {
 async function updateCartItemQuantity(productId, change) {
     try {
         const cartItems = await apiRequest('/cart');
-        const item = cartItems ? cartItems.find(i => i.product_id === parseInt(productId)) : null;
+        const item = cartItems && Array.isArray(cartItems) 
+            ? cartItems.find(i => i.product_id === parseInt(productId))
+            : null;
         
         if (item) {
             const newQuantity = item.quantity + change;
@@ -1187,42 +1408,222 @@ async function checkout() {
     }
 
     try {
+        // Получаем корзину
         const cartItems = await apiRequest('/cart');
         
-        if (!cartItems || cartItems.length === 0) {
+        if (!cartItems || !Array.isArray(cartItems) || cartItems.length === 0) {
             showToast('error', 'Ошибка', 'Корзина пуста');
             return;
         }
+        
 
-        const orderData = {
-            address: address,
-            payment_method: paymentMethod,
-            items: cartItems.map(item => ({
-                product_id: item.product_id,
-                quantity: item.quantity
-            }))
-        };
+        
 
-        await apiRequest('/orders', {
-            method: 'POST',
-            body: orderData
+
+
+        console.log('Товары в корзине:', cartItems);
+        
+        // Получаем информацию о товарах в корзине
+        const productsPromises = cartItems.map(item => 
+            apiRequest(`/products/${item.product_id}`)
+        );
+        const products = await Promise.all(productsPromises);
+        
+        console.log('Информация о товарах:', products);
+        
+        // Проверяем, что все товары получены
+        const validProducts = products.filter(p => p);
+        if (validProducts.length === 0) {
+            showToast('error', 'Ошибка', 'Не удалось получить информацию о товарах');
+            return;
+        }
+        
+        // Группируем товары по фермам и рассчитываем суммы
+        const ordersByFarm = {};
+        cartItems.forEach((item, index) => {
+            const product = products[index];
+            if (product && product.farm_id) {
+                if (!ordersByFarm[product.farm_id]) {
+                    ordersByFarm[product.farm_id] = {
+                        farm_id: product.farm_id,
+                        items: [],
+                        total_amount: 0
+                    };
+                }
+                
+                const itemTotal = parseFloat(product.price || 0) * parseFloat(item.quantity);
+                ordersByFarm[product.farm_id].total_amount += itemTotal;
+                
+                ordersByFarm[product.farm_id].items.push({
+                    product_id: item.product_id,
+                    quantity: item.quantity
+                });
+            }
         });
-
-        // Очистка корзины после оформления заказа
-        for (const item of cartItems) {
-            await apiRequest(`/cart/items/${item.product_id}`, {
-                method: 'DELETE'
+        
+        console.log('Заказы по фермам:', ordersByFarm);
+        
+        // Создаем заказ для каждой фермы
+        const orderPromises = Object.values(ordersByFarm).map(farmOrder => {
+            const orderData = {
+                delivery_address: address,
+                payment_method: paymentMethod,
+                farm_id: farmOrder.farm_id,
+                total_amount: parseFloat(farmOrder.total_amount.toFixed(2)),
+                items: farmOrder.items
+            };
+            
+            console.log('Создание заказа:', orderData);
+            
+            return apiRequest('/orders', {
+                method: 'POST',
+                body: orderData
             });
+        });
+        
+        const orderResults = await Promise.all(orderPromises);
+        
+        console.log('Результаты создания заказов:', orderResults);
+        
+        // Проверяем успешность создания всех заказов
+        const successfulOrders = orderResults.filter(r => r);
+        if (successfulOrders.length === 0) {
+            // Получаем подробную информацию об ошибке
+            const errorText = await response.text();
+            console.error('Текст ошибки создания заказа:', errorText);
+            
+            let errorMessage = 'Не удалось создать ни одного заказа';
+            try {
+                const errorData = JSON.parse(errorText);
+                if (errorData.detail) {
+                    if (Array.isArray(errorData.detail)) {
+                        errorMessage = errorData.detail.map(err => err.msg || err.detail).join(', ');
+                    } else if (typeof errorData.detail === 'object') {
+                        errorMessage = errorData.detail.msg || errorData.detail.message || errorData.detail;
+                    } else {
+                        errorMessage = errorData.detail;
+                    }
+                }
+            } catch (e) {
+                console.error('Ошибка парсинга ответа:', e);
+            }
+            
+            throw new Error(errorMessage);
         }
 
+        // Очистка корзины после успешного оформления заказа
+        const deletePromises = cartItems.map(item => 
+            apiRequest(`/cart/items/${item.product_id}`, {
+                method: 'DELETE'
+            })
+        );
+        
+        await Promise.all(deletePromises);
+
         renderNav();
-        showToast('success', 'Заказ успешно оформлен!', 'Отслеживайте его статус в профиле.');
+        showToast('success', 'Заказ успешно оформлен!', `Создано ${successfulOrders.length} заказ(ов). Отслеживайте их статус в профиле.`);
         navigateTo('profile');
     } catch (error) {
-        showToast('error', 'Ошибка', error.message || 'Не удалось оформить заказ');
-        console.error('Ошибка при оформлении заказа:', error);
+        console.error('Полная ошибка при оформлении заказа:', error);
+        showToast('error', 'Ошибка оформления заказа', error.message || 'Не удалось оформить заказ. Проверьте данные и попробуйте снова.');
     }
 }
+
+
+
+async function updateOrderStatus(orderId, newStatus) {
+    try {
+        await apiRequest(`/admin/orders/${orderId}/status`, {
+            method: 'PUT',
+            body: { status: newStatus }
+        });
+        
+        showToast('success', 'Статус обновлен', 'Статус заказа успешно изменен');
+        renderAdminPanel();
+    } catch (error) {
+        showToast('error', 'Ошибка', error.message || 'Не удалось обновить статус');
+        console.error('Ошибка при обновлении статуса заказа:', error);
+    }
+}
+
+
+
+
+
+
+async function apiRequest(endpoint, options = {}) {
+    const headers = {
+        'Content-Type': 'application/json',
+        ...options.headers
+    };
+    
+    const config = {
+        ...options,
+        headers,
+        credentials: 'include'
+    };
+    
+    if (config.body && typeof config.body === 'object' && !(config.body instanceof FormData)) {
+        config.body = JSON.stringify(config.body);
+        console.log(`Отправка запроса на ${endpoint}:`, config.body);
+    }
+    
+    try {
+        const response = await fetch(`${API_BASE_URL}${endpoint}`, config);
+        
+        console.log(`Ответ от ${endpoint}:`, response.status, response.statusText);
+        
+        if (response.status === 401) {
+            currentUser = null;
+            renderNav();
+            if (endpoint !== '/auth/me') {
+                showToast('error', 'Сессия истекла', 'Пожалуйста, войдите снова');
+            }
+            return null;
+        }
+
+        if (response.status === 403) {
+            if (endpoint.includes('/admin/')) {
+                navigateTo('home');
+                showToast('error', 'Доступ запрещен', 'Требуются права администратора');
+            }
+            return null;
+        }
+
+        if (!response.ok) {
+            const error = await response.json().catch(() => ({}));
+            console.error(`Ошибка ${response.status} от ${endpoint}:`, error);
+            
+            let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+            
+            if (error.detail) {
+                if (Array.isArray(error.detail)) {
+                    errorMessage = error.detail.map(err => err.msg || err.detail || errorMessage).join(', ');
+                } else if (typeof error.detail === 'object') {
+                    errorMessage = error.detail.msg || error.detail.message || error.detail || errorMessage;
+                } else {
+                    errorMessage = error.detail || errorMessage;
+                }
+            }
+            
+            throw new Error(errorMessage);
+        }
+        
+        if (response.status === 204 || response.headers.get('content-length') === '0') {
+            return null;
+        }
+        
+        const data = await response.json();
+        return data;
+    } catch (error) {
+        if (error.name === 'TypeError' && error.message.includes('Failed to fetch')) {
+            showToast('error', 'Ошибка соединения', 'Не удалось подключиться к серверу');
+        } else {
+            throw error;
+        }
+    }
+}
+
 
 async function renderProfile() {
     if (!currentUser) {
@@ -1236,6 +1637,12 @@ async function renderProfile() {
         
         const orders = await apiRequest('/orders');
 
+        // Определяем имя пользователя
+        const userName = userProfile.username || userProfile.name || 'Пользователь';
+        const userEmail = userProfile.email || 'Email не указан';
+        const userAddress = userProfile.address || 'Не указан';
+        const userRole = userProfile.role ? userProfile.role.name : 'customer';
+
         const html = `
             <div class="profile-layout" style="display: grid; grid-template-columns: 350px 1fr; gap: 2rem; margin-top: 2rem;">
                 <div>
@@ -1248,10 +1655,10 @@ async function renderProfile() {
                             </div>
 
                             <div class="text-center mb-4" id="profileInfo">
-                                <h2 style="margin-bottom: 0.25rem;">${userProfile.name}</h2>
-                                <p class="text-gray" style="font-size: 0.875rem;">${userProfile.email}</p>
-                                <span class="badge ${isAdmin() ? 'badge-green' : isFarmer() ? 'badge-blue' : 'badge-yellow'}" style="margin-top: 0.5rem;">
-                                    ${isCustomer() ? 'Покупатель' : isFarmer() ? 'Поставщик' : 'Администратор'}
+                                <h2 style="margin-bottom: 0.25rem;">${userName}</h2>
+                                <p class="text-gray" style="font-size: 0.875rem;">${userEmail}</p>
+                                <span class="badge ${userRole === 'admin' ? 'badge-green' : userRole === 'farmer' ? 'badge-blue' : 'badge-yellow'}" style="margin-top: 0.5rem;">
+                                    ${userRole === 'customer' ? 'Покупатель' : userRole === 'farmer' ? 'Поставщик' : 'Администратор'}
                                 </span>
                             </div>
 
@@ -1260,7 +1667,7 @@ async function renderProfile() {
                                     <span style="color: #9ca3af;">${getIcon('mapPin')}</span>
                                     <div>
                                         <p style="font-size: 0.875rem; color: #6b7280;">Адрес</p>
-                                        <p>${userProfile.address || 'Не указан'}</p>
+                                        <p>${userAddress}</p>
                                     </div>
                                 </div>
                             </div>
@@ -1271,11 +1678,11 @@ async function renderProfile() {
                                 <form onsubmit="saveProfile(event)">
                                     <div class="form-group">
                                         <label class="form-label">Имя</label>
-                                        <input type="text" class="form-input" id="editName" value="${userProfile.name}">
+                                        <input type="text" class="form-input" id="editName" value="${userName}">
                                     </div>
                                     <div class="form-group">
                                         <label class="form-label">Адрес</label>
-                                        <input type="text" class="form-input" id="editAddress" value="${userProfile.address || ''}">
+                                        <input type="text" class="form-input" id="editAddress" value="${userAddress}">
                                     </div>
                                     <div class="flex gap-1">
                                         <button type="submit" class="btn btn-primary flex-1">Сохранить</button>
@@ -1291,20 +1698,20 @@ async function renderProfile() {
                     <div class="card mb-4">
                         <div class="card-content">
                             <h2 class="mb-4">${getIcon('clock')} Активные заказы</h2>
-                            ${orders && orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length === 0 ? 
+                            ${orders && Array.isArray(orders) && orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').length === 0 ? 
                                 '<p class="text-center text-gray" style="padding: 2rem 0;">Нет активных заказов</p>' : 
                                 orders.filter(o => o.status !== 'completed' && o.status !== 'cancelled').map(order => `
                                     <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;">
                                         <div class="flex-between mb-2">
                                             <div>
                                                 <p style="font-weight: 600;">Заказ №${order.id}</p>
-                                                <p style="font-size: 0.875rem; color: #6b7280;">${new Date(order.created_at).toLocaleDateString('ru-RU')}</p>
+                                                <p style="font-size: 0.875rem; color: #6b7280;">${new Date(order.created_at || order.order_date).toLocaleDateString('ru-RU')}</p>
                                             </div>
                                             <span class="badge badge-yellow">${order.status}</span>
                                         </div>
                                         <div class="flex-between">
-                                            <p style="font-size: 0.875rem; color: #6b7280;">Адрес: ${order.address}</p>
-                                            <p class="text-green" style="font-weight: 600;">${order.total} ₽</p>
+                                            <p style="font-size: 0.875rem; color: #6b7280;">Адрес: ${order.address || order.delivery_address}</p>
+                                            <p class="text-green" style="font-weight: 600;">${order.total || order.total_amount || 0} ₽</p>
                                         </div>
                                     </div>
                                 `).join('')
@@ -1350,23 +1757,34 @@ async function saveProfile(e) {
     
     if (!nameInput || !addressInput) return;
     
-    const name = nameInput.value;
-    const address = addressInput.value;
+    const name = nameInput.value.trim();
+    const address = addressInput.value.trim();
+
+    if (!name || name.length < 3) {
+        showToast('error', 'Ошибка', 'Имя должно содержать минимум 3 символа');
+        return;
+    }
+    
+    if (!address) {
+        showToast('error', 'Ошибка', 'Адрес обязателен');
+        return;
+    }
 
     try {
         await apiRequest('/auth/me', {
             method: 'PATCH',
-            body: { name, address }
+            body: { username: name, address: address }
         });
+    
 
-        currentUser.name = name;
+        currentUser.username = name;
         currentUser.address = address;
         
         hideEditProfile();
         renderProfile();
         showToast('success', 'Профиль обновлен');
     } catch (error) {
-        showToast('error', 'Ошибка', 'Не удалось обновить профиль');
+        showToast('error', 'Ошибка', error.message || 'Не удалось обновить профиль');
         console.error('Ошибка при обновлении профиля:', error);
     }
 }
@@ -1394,7 +1812,7 @@ async function renderAdminPanel() {
         <div style="display: flex; gap: 1rem; border-bottom: 1px solid #e5e7eb; margin-bottom: 2rem; flex-wrap: wrap;">
             <button class="admin-tab-btn ${currentAdminTab === 'dashboard' ? 'active' : ''}" onclick="switchAdminTab('dashboard', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'dashboard' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'dashboard' ? '2px solid #16a34a' : 'none'};">Статистика</button>
             <button class="admin-tab-btn ${currentAdminTab === 'users' ? 'active' : ''}" onclick="switchAdminTab('users', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'users' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'users' ? '2px solid #16a34a' : 'none'};">Пользователи</button>
-            <button class="admin-tab-btn ${currentAdminTab === 'suppliers' ? 'active' : ''}" onclick="switchAdminTab('suppliers', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'suppliers' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'suppliers' ? '2px solid #16a34a' : 'none'};">Поставщики</button>
+            <button class="admin-tab-btn ${currentAdminTab === 'suppliers' ? 'active' : ''}" onclick="switchAdminTab('suppliers', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'suppliers' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'suppliers' ? '2px solid #16a34a' : 'none'};">Фермы</button>
             <button class="admin-tab-btn ${currentAdminTab === 'products' ? 'active' : ''}" onclick="switchAdminTab('products', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'products' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'products' ? '2px solid #16a34a' : 'none'};">Продукты</button>
             <button class="admin-tab-btn ${currentAdminTab === 'orders' ? 'active' : ''}" onclick="switchAdminTab('orders', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'orders' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'orders' ? '2px solid #16a34a' : 'none'};">Заказы</button>
             <button class="admin-tab-btn ${currentAdminTab === 'reviews' ? 'active' : ''}" onclick="switchAdminTab('reviews', event)" style="padding: 1rem; border: none; background: none; cursor: pointer; font-weight: ${currentAdminTab === 'reviews' ? '600' : '400'}; border-bottom: ${currentAdminTab === 'reviews' ? '2px solid #16a34a' : 'none'};">Отзывы</button>
@@ -1493,6 +1911,7 @@ async function renderAdminUsers() {
         const users = response.users || [];
         const total = response.total || 0;
         const totalPages = response.total_pages || 1;        
+        
         let html = `
             <div class="card">
                 <div class="card-content">
@@ -1513,13 +1932,13 @@ async function renderAdminUsers() {
                                 ${users.map(user => `
                                     <tr style="border-bottom: 1px solid #e5e7eb;">
                                         <td style="padding: 0.75rem;">${user.id}</td>
-                                        <td style="padding: 0.75rem;">${user.name}</td>
+                                        <td style="padding: 0.75rem;">${user.username}</td>
                                         <td style="padding: 0.75rem;">${user.email}</td>
                                         <td style="padding: 0.75rem;">
                                             <select class="form-input" style="padding: 0.5rem;" onchange="updateUserRole('${user.id}', this.value)">
-                                                <option value="customer" ${user.role === 'customer' ? 'selected' : ''}>Покупатель</option>
-                                                <option value="farmer" ${user.role === 'farmer' ? 'selected' : ''}>Поставщик</option>
-                                                <option value="admin" ${user.role === 'admin' ? 'selected' : ''}>Админ</option>
+                                                <option value="customer" ${user.role && user.role.name === 'customer' ? 'selected' : ''}>Покупатель</option>
+                                                <option value="farmer" ${user.role && user.role.name === 'farmer' ? 'selected' : ''}>Поставщик</option>
+                                                <option value="admin" ${user.role && user.role.name === 'admin' ? 'selected' : ''}>Админ</option>
                                             </select>
                                         </td>
                                         <td style="padding: 0.75rem; font-size: 0.875rem; color: #6b7280;">${user.address || ''}</td>
@@ -1561,8 +1980,9 @@ async function renderAdminUsers() {
 
 async function updateUserRole(userId, newRole) {
     try {
-        await apiRequest(`/admin/users/${userId}/role?new_role=${newRole}`, {
-            method: 'PUT'
+        await apiRequest(`/admin/users/${userId}/role`, {
+            method: 'PUT',
+            body: { new_role: newRole }
         });
         
         showToast('success', 'Роль обновлена', 'Роль пользователя успешно изменена');
@@ -1595,7 +2015,8 @@ async function renderAdminProducts() {
         const products = response.products || [];
         const total = response.total || 0;
         const totalPages = response.total_pages || 1;
-        const suppliers = await apiRequest('/farms');
+        const farms = await apiRequest('/farms');
+        const categories = await loadCategories();
         
         let html = `
             <div class="card">
@@ -1603,17 +2024,21 @@ async function renderAdminProducts() {
                     <h2 class="mb-4">Управление продуктами (всего: ${total})</h2>
                     <div class="grid grid-3">
                         ${products.map(product => {
-                            const supplier = suppliers ? suppliers.find(s => s.id === product.supplier_id) : null;
+                            const farm = farms && Array.isArray(farms) ? farms.find(s => s.id === product.farm_id) : null;
+                            const category = categories.find(c => c.id === product.category_id);
+                            const formattedProduct = formatProductData(product, farms, categories);
+                            
                             return `
                                 <div class="card">
-                                    <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}" style="height: 150px; object-fit: cover;">
+                                    <img src="${formattedProduct.image}" alt="${formattedProduct.name}" style="height: 150px; object-fit: cover;">
                                     <div class="card-content">
-                                        <p style="font-weight: 600; margin-bottom: 0.25rem;">${product.name}</p>
-                                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">${product.category}</p>
-                                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">${supplier?.name || 'Без фермы'}</p>
-                                        <p class="text-green mb-2">${product.price} ₽ / ${product.unit}</p>
+                                        <p style="font-weight: 600; margin-bottom: 0.25rem;">${formattedProduct.name}</p>
+                                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">${category ? category.name : 'Без категории'}</p>
+                                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">${farm ? farm.name : 'Без фермы'}</p>
+                                        <p class="text-green mb-2">${formattedProduct.price} ₽ / ${formattedProduct.unit}</p>
+                                        <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">В наличии: ${formattedProduct.quantity} ${formattedProduct.unit}</p>
                                         <div class="flex gap-1">
-                                            <button class="btn btn-danger btn-small flex-1" onclick="deleteProduct('${product.id}')">${getIcon('trash')}</button>
+                                            <button class="btn btn-danger btn-small flex-1" onclick="deleteProduct('${formattedProduct.id}')">${getIcon('trash')}</button>
                                         </div>
                                     </div>
                                 </div>
@@ -1656,31 +2081,40 @@ async function deleteProduct(productId) {
 async function renderAdminSuppliers() {
     try {
         const response = await apiRequest(`/admin/farms?page=${currentAdminPage}&per_page=${adminItemsPerPage}`);
-        const suppliers = response.farms || [];
+        const farms = response.farms || [];
         const total = response.total || 0;
         const totalPages = response.total_pages || 1;
         
         let html = `
             <div class="card">
                 <div class="card-content">
-                    <h2 class="mb-4">Управление поставщиками (всего: ${total})</h2>
-                    ${suppliers.map(supplier => `
-                        <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem; display: flex; gap: 1rem;">
-                            <img src="${supplier.image || '/static/images/default-farm.jpg'}" alt="${supplier.name}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 0.5rem;">
-                            <div style="flex: 1;">
-                                <div class="flex-between mb-1">
-                                    <div>
-                                        <p style="font-weight: 600;">${supplier.name}</p>
-                                        <p style="font-size: 0.875rem; color: #6b7280;">${supplier.location}</p>
+                    <h2 class="mb-4">Управление фермами (всего: ${total})</h2>
+                    ${farms.map(farm => {
+                        const formattedFarm = formatFarmData(farm);
+                        return `
+                            <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem; display: flex; gap: 1rem;">
+                                <img src="${formattedFarm.image}" alt="${formattedFarm.name}" style="width: 100px; height: 100px; object-fit: cover; border-radius: 0.5rem;">
+                                <div style="flex: 1;">
+                                    <div class="flex-between mb-1">
+                                        <div>
+                                            <p style="font-weight: 600;">${formattedFarm.name}</p>
+                                            <p style="font-size: 0.875rem; color: #6b7280;">${formattedFarm.location}</p>
+                                        </div>
+                                        <div style="display: flex; align-items: center; gap: 0.25rem;">
+                                            <span style="color: #fbbf24;">${getIcon('star')}</span>
+                                            <span style="font-weight: 600;">${formattedFarm.rating.toFixed(1)}</span>
+                                        </div>
+                                    </div>
+                                    <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${formattedFarm.description || ''}</p>
+                                    <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">Email: ${formattedFarm.contact_email || 'Не указан'}</p>
+                                    <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">Телефон: ${formattedFarm.contact_phone || 'Не указан'}</p>
+                                    <div class="flex gap-1">
+                                        <button class="btn btn-danger btn-small" onclick="deleteSupplier('${formattedFarm.id}')">${getIcon('trash')} Удалить</button>
                                     </div>
                                 </div>
-                                <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.75rem;">${supplier.description || ''}</p>
-                                <div class="flex gap-1">
-                                    <button class="btn btn-danger btn-small" onclick="deleteSupplier('${supplier.id}')">${getIcon('trash')} Удалить</button>
-                                </div>
                             </div>
-                        </div>
-                    `).join('')}
+                        `;
+                    }).join('')}
                     ${totalPages > 1 ? `
                         <div class="pagination" style="margin-top: 1rem; text-align: center;">
                             ${currentAdminPage > 1 ? `<button class="btn btn-secondary btn-small" onclick="currentAdminPage--; renderAdminPanel()">Назад</button>` : ''}
@@ -1693,13 +2127,13 @@ async function renderAdminSuppliers() {
         `;
         return html;
     } catch (error) {
-        console.error('Ошибка при загрузке поставщиков:', error);
+        console.error('Ошибка при загрузке ферм:', error);
         return '<p class="text-gray">Ошибка загрузки данных</p>';
     }
 }
 
 async function deleteSupplier(supplierId) {
-    if (!confirm('Удалить поставщика?')) return;
+    if (!confirm('Удалить ферму?')) return;
     
     try {
         await apiRequest(`/admin/farms/${supplierId}`, {
@@ -1707,10 +2141,10 @@ async function deleteSupplier(supplierId) {
         });
         
         renderAdminPanel();
-        showToast('success', 'Поставщик удален');
+        showToast('success', 'Ферма удалена');
     } catch (error) {
-        showToast('error', 'Ошибка', error.message || 'Не удалось удалить поставщика');
-        console.error('Ошибка при удалении поставщика:', error);
+        showToast('error', 'Ошибка', error.message || 'Не удалось удалить ферму');
+        console.error('Ошибка при удалении фермы:', error);
     }
 }
 
@@ -1730,16 +2164,18 @@ async function renderAdminReviews() {
                             <div style="border: 1px solid #e5e7eb; border-radius: 0.5rem; padding: 1rem; margin-bottom: 1rem;">
                                 <div class="flex-between mb-1">
                                     <div>
-                                        <p style="font-weight: 600;">${review.user_name}</p>
+                                        <p style="font-weight: 600;">${review.user_name || 'Анонимный пользователь'}</p>
                                         <p style="font-size: 0.875rem; color: #6b7280;">
                                             ${new Date(review.created_at).toLocaleDateString('ru-RU')}
+                                            ${review.farm_name ? ` | Ферма: ${review.farm_name}` : ''}
+                                            ${review.product_name ? ` | Продукт: ${review.product_name}` : ''}
                                         </p>
                                     </div>
                                     <div class="flex gap-1" style="align-items: center;">
                                         <span style="color: #fbbf24;">★ ${review.rating}</span>
                                     </div>
                                 </div>
-                                <p style="color: #374151; margin-bottom: 0.75rem;">${review.comment}</p>
+                                <p style="color: #374151; margin-bottom: 0.75rem;">${review.comment || ''}</p>
                                 <button class="btn btn-danger btn-small" onclick="deleteReview('${review.id}')">
                                     ${getIcon('trash')} Удалить
                                 </button>
@@ -1806,9 +2242,17 @@ async function renderAdminOrders() {
                                     <tr style="border-bottom: 1px solid #e5e7eb;">
                                         <td style="padding: 0.75rem;">#${order.id}</td>
                                         <td style="padding: 0.75rem;">${order.user_name || 'Неизвестно'}</td>
-                                        <td style="padding: 0.75rem;">${order.total} ₽</td>
-                                        <td style="padding: 0.75rem;">${order.status}</td>
-                                        <td style="padding: 0.75rem;">${new Date(order.created_at).toLocaleDateString('ru-RU')}</td>
+                                        <td style="padding: 0.75rem;">${order.total_amount || order.total || 0} ₽</td>
+                                        <td style="padding: 0.75rem;">
+                                            <select class="form-input" style="padding: 0.5rem;" onchange="updateOrderStatus('${order.id}', this.value)">
+                                                <option value="pending" ${order.status === 'pending' ? 'selected' : ''}>Ожидает</option>
+                                                <option value="processing" ${order.status === 'processing' ? 'selected' : ''}>В обработке</option>
+                                                <option value="shipped" ${order.status === 'shipped' ? 'selected' : ''}>Отправлен</option>
+                                                <option value="delivered" ${order.status === 'delivered' ? 'selected' : ''}>Доставлен</option>
+                                                <option value="cancelled" ${order.status === 'cancelled' ? 'selected' : ''}>Отменен</option>
+                                            </select>
+                                        </td>
+                                        <td style="padding: 0.75rem;">${new Date(order.order_date || order.created_at).toLocaleDateString('ru-RU')}</td>
                                     </tr>
                                 `).join('')}
                             </tbody>
@@ -1831,9 +2275,24 @@ async function renderAdminOrders() {
     }
 }
 
+async function updateOrderStatus(orderId, newStatus) {
+    try {
+        await apiRequest(`/admin/orders/${orderId}/status`, {
+            method: 'PUT',
+            body: { status: newStatus }
+        });
+        
+        showToast('success', 'Статус обновлен', 'Статус заказа успешно изменен');
+        renderAdminPanel();
+    } catch (error) {
+        showToast('error', 'Ошибка', error.message || 'Не удалось обновить статус');
+        console.error('Ошибка при обновлении статуса заказа:', error);
+    }
+}
+
 async function renderAdminCategories() {
     try {
-        const categories = await apiRequest('/categories');
+        const categories = await loadCategories();
         
         let html = `
             <div class="card">
@@ -1934,29 +2393,31 @@ async function renderSupplierPanel() {
     }
 
     try {
-        const suppliers = await apiRequest('/farms');
-        const supplier = suppliers ? suppliers.find(s => s.user_id === currentUser.id) : null;
+        const farms = await apiRequest('/farms');
+        const farm = farms && Array.isArray(farms) 
+            ? farms.find(s => s.user_id === currentUser.id)
+            : null;
         
         let html = `
             <div class="card mb-4">
                 <div class="card-content">
                     <div class="flex-between mb-4">
                         <h2>${getIcon('store')} Моя ферма</h2>
-                        ${supplier ? `<button class="btn btn-primary" onclick="showEditSupplierPanel()">${getIcon('edit')} Редактировать</button>` : ''}
+                        ${farm ? `<button class="btn btn-primary" onclick="showEditSupplierPanel()">${getIcon('edit')} Редактировать</button>` : ''}
                     </div>
 
-                    ${supplier ? `
+                    ${farm ? `
                         <div id="supplierInfo">
                             <div class="flex gap-2 mb-4">
-                                <img src="${supplier.image || '/static/images/default-farm.jpg'}" alt="${supplier.name}" style="width: 128px; height: 128px; object-fit: cover; border-radius: 0.5rem;">
+                                <img src="${farm.image ? `data:image/jpeg;base64,${farm.image}` : '/static/images/default-farm.jpg'}" alt="${farm.name}" style="width: 128px; height: 128px; object-fit: cover; border-radius: 0.5rem;">
                                 <div style="flex: 1;">
                                     <div class="flex gap-1 mb-2" style="align-items: center;">
-                                        <h3>${supplier.name}</h3>
+                                        <h3>${farm.name}</h3>
                                     </div>
-                                    <p class="text-gray mb-2">${supplier.location}</p>
-                                    <p style="color: #374151;">${supplier.description || ''}</p>
-                                    ${supplier.rating > 0 ? `
-                                        <p class="mt-1" style="color: #fbbf24;">★ ${supplier.rating} рейтинг</p>
+                                    <p class="text-gray mb-2">${farm.address}</p>
+                                    <p style="color: #374151;">${farm.description || ''}</p>
+                                    ${farm.rating_avg > 0 ? `
+                                        <p class="mt-1" style="color: #fbbf24;">★ ${farm.rating_avg.toFixed(1)} рейтинг</p>
                                     ` : ''}
                                 </div>
                             </div>
@@ -1965,9 +2426,11 @@ async function renderSupplierPanel() {
                         <div id="editSupplierPanelForm" style="display: none; background: #dbeafe; padding: 1rem; border-radius: 0.5rem;">
                             <h3 class="mb-2">Редактировать информацию о ферме</h3>
                             <form onsubmit="saveSupplierPanelInfo(event)" enctype="multipart/form-data">
-                                <input type="text" class="form-input mb-2" id="supplierPanelName" value="${supplier.name}" placeholder="Название фермы" required>
-                                <input type="text" class="form-input mb-2" id="supplierPanelLocation" value="${supplier.location}" placeholder="Местоположение" required>
-                                <textarea class="form-input mb-2" id="supplierPanelDescription" rows="4" required>${supplier.description || ''}</textarea>
+                                <input type="text" class="form-input mb-2" id="supplierPanelName" value="${farm.name}" placeholder="Название фермы" required>
+                                <input type="text" class="form-input mb-2" id="supplierPanelAddress" value="${farm.address}" placeholder="Адрес" required>
+                                <textarea class="form-input mb-2" id="supplierPanelDescription" rows="4" required>${farm.description || ''}</textarea>
+                                <input type="email" class="form-input mb-2" id="supplierPanelEmail" value="${farm.contact_email || ''}" placeholder="Контактный email">
+                                <input type="tel" class="form-input mb-2" id="supplierPanelPhone" value="${farm.contact_phone || ''}" placeholder="Контактный телефон">
                                 <input type="file" class="form-input mb-2" id="supplierPanelImage" accept="image/*">
                                 <div class="flex gap-1">
                                     <button type="submit" class="btn btn-primary">Сохранить</button>
@@ -1986,8 +2449,10 @@ async function renderSupplierPanel() {
                             <h3 class="mb-2">Заявка на регистрацию фермы</h3>
                             <form onsubmit="createSupplier(event)" enctype="multipart/form-data">
                                 <input type="text" class="form-input mb-2" id="newSupplierName" placeholder="Название фермы" required>
-                                <input type="text" class="form-input mb-2" id="newSupplierLocation" placeholder="Местоположение" required>
+                                <input type="text" class="form-input mb-2" id="newSupplierAddress" placeholder="Адрес" required>
                                 <textarea class="form-input mb-2" id="newSupplierDescription" rows="4" placeholder="Описание фермы" required></textarea>
+                                <input type="email" class="form-input mb-2" id="newSupplierEmail" placeholder="Контактный email">
+                                <input type="tel" class="form-input mb-2" id="newSupplierPhone" placeholder="Контактный телефон">
                                 <input type="file" class="form-input mb-2" id="newSupplierImage" accept="image/*">
                                 <div class="flex gap-1">
                                     <button type="submit" class="btn btn-primary">Отправить заявку</button>
@@ -2000,9 +2465,14 @@ async function renderSupplierPanel() {
             </div>
         `;
 
-        if (supplier) {
+        if (farm) {
             const products = await apiRequest('/products');
-            const supplierProducts = products ? products.filter(p => p.supplier_id === supplier.id) : [];
+            const categories = await loadCategories();
+            const supplierProducts = products && Array.isArray(products) 
+                ? products
+                    .filter(p => p.farm_id === farm.id)
+                    .map(p => formatProductData(p, [farm], categories))
+                : [];
             
             html += `
                 <div class="card">
@@ -2017,11 +2487,14 @@ async function renderSupplierPanel() {
                             <form onsubmit="saveSupplierProduct(event)" enctype="multipart/form-data">
                                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
                                     <input type="text" class="form-input" id="supplierProductName" placeholder="Название" required>
-                                    <input type="number" class="form-input" id="supplierProductPrice" placeholder="Цена" required>
+                                    <input type="number" class="form-input" id="supplierProductPrice" placeholder="Цена" required step="0.01">
                                     <input type="text" class="form-input" id="supplierProductUnit" placeholder="Единица (кг, л, шт)" required>
                                     <input type="text" class="form-input" id="supplierProductCategory" placeholder="Категория" required>
+                                    <input type="number" class="form-input" id="supplierProductQuantity" placeholder="Количество" required step="0.01">
+                                    <input type="checkbox" class="form-checkbox" id="supplierProductInStock" checked>
+                                    <label for="supplierProductInStock">В наличии</label>
                                     <input type="file" class="form-input" id="supplierProductImage" accept="image/*" style="grid-column: 1 / -1;">
-                                    <textarea class="form-input" id="supplierProductDescription" placeholder="Описание" style="grid-column: 1 / -1;"></textarea>
+                                    <textarea class="form-input" id="supplierProductDescription" placeholder="Описание" rows="3" style="grid-column: 1 / -1;"></textarea>
                                 </div>
                                 <div class="flex gap-1 mt-2">
                                     <button type="submit" class="btn btn-primary">Сохранить</button>
@@ -2034,18 +2507,20 @@ async function renderSupplierPanel() {
                             <div class="grid grid-3">
                                 ${supplierProducts.map(product => `
                                     <div class="card">
-                                        <img src="${product.image || '/static/images/default-product.jpg'}" alt="${product.name}" style="height: 150px; object-fit: cover;">
+                                        <img src="${product.image}" alt="${product.name}" style="height: 150px; object-fit: cover;">
                                         <div class="card-content">
                                             <div class="flex-between mb-1">
                                                 <div>
                                                     <p style="font-weight: 600; margin-bottom: 0.25rem;">${product.name}</p>
-                                                    <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">${product.category}</p>
+                                                    <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">${product.category_name || 'Без категории'}</p>
                                                 </div>
                                                 <div class="flex gap-1">
                                                     <button class="btn btn-danger btn-small" onclick="deleteSupplierProduct('${product.id}')">${getIcon('trash')}</button>
                                                 </div>
                                             </div>
                                             <p class="text-green mb-2">${product.price} ₽ / ${product.unit}</p>
+                                            <p style="font-size: 0.875rem; color: #6b7280; margin-bottom: 0.5rem;">В наличии: ${product.quantity} ${product.unit}</p>
+                                            ${product.in_stock ? '<span class="badge badge-green">В наличии</span>' : '<span class="badge badge-red">Нет в наличии</span>'}
                                         </div>
                                     </div>
                                 `).join('')}
@@ -2078,16 +2553,39 @@ async function createSupplier(e) {
 
     const formData = new FormData();
     const nameInput = document.getElementById('newSupplierName');
-    const locationInput = document.getElementById('newSupplierLocation');
+    const addressInput = document.getElementById('newSupplierAddress');
     const descriptionInput = document.getElementById('newSupplierDescription');
+    const emailInput = document.getElementById('newSupplierEmail');
+    const phoneInput = document.getElementById('newSupplierPhone');
     const imageInput = document.getElementById('newSupplierImage');
     
-    if (!nameInput || !locationInput || !descriptionInput) return;
+    if (!nameInput || !addressInput || !descriptionInput) return;
     
     formData.append('name', nameInput.value);
-    formData.append('location', locationInput.value);
+    formData.append('address', addressInput.value);
     formData.append('description', descriptionInput.value);
     
+    if (emailInput && emailInput.value) {
+        formData.append('contact_email', emailInput.value);
+    }
+    
+    if (phoneInput && phoneInput.value) {
+        formData.append('contact_phone', phoneInput.value);
+    }
+    
+    if (!nameInput.value.trim()) {
+        showToast('error', 'Ошибка', 'Название фермы обязательно');
+        return;
+    }
+
+    if (!addressInput.value.trim()) {
+        showToast('error', 'Ошибка', 'Адрес обязателен');
+        return;
+    }
+
+
+
+
     if (imageInput && imageInput.files[0]) {
         formData.append('image', imageInput.files[0]);
     }
@@ -2133,26 +2631,38 @@ async function saveSupplierPanelInfo(e) {
 
     const formData = new FormData();
     const nameInput = document.getElementById('supplierPanelName');
-    const locationInput = document.getElementById('supplierPanelLocation');
+    const addressInput = document.getElementById('supplierPanelAddress');
     const descriptionInput = document.getElementById('supplierPanelDescription');
+    const emailInput = document.getElementById('supplierPanelEmail');
+    const phoneInput = document.getElementById('supplierPanelPhone');
     const imageInput = document.getElementById('supplierPanelImage');
     
-    if (!nameInput || !locationInput || !descriptionInput) return;
+    if (!nameInput || !addressInput || !descriptionInput) return;
     
     formData.append('name', nameInput.value);
-    formData.append('location', locationInput.value);
+    formData.append('address', addressInput.value);
     formData.append('description', descriptionInput.value);
+    
+    if (emailInput) {
+        formData.append('contact_email', emailInput.value);
+    }
+    
+    if (phoneInput) {
+        formData.append('contact_phone', phoneInput.value);
+    }
     
     if (imageInput && imageInput.files[0]) {
         formData.append('image', imageInput.files[0]);
     }
 
     try {
-        const suppliers = await apiRequest('/farms');
-        const supplier = suppliers ? suppliers.find(s => s.user_id === currentUser.id) : null;
+        const farms = await apiRequest('/farms');
+        const farm = farms && Array.isArray(farms) 
+            ? farms.find(s => s.user_id === currentUser.id)
+            : null;
         
-        if (supplier) {
-            const response = await fetch(`${API_BASE_URL}/farms/${supplier.id}`, {
+        if (farm) {
+            const response = await fetch(`${API_BASE_URL}/farms/${farm.id}`, {
                 method: 'PUT',
                 body: formData,
                 credentials: 'include'
@@ -2190,27 +2700,90 @@ async function saveSupplierProduct(e) {
     const priceInput = document.getElementById('supplierProductPrice');
     const unitInput = document.getElementById('supplierProductUnit');
     const categoryInput = document.getElementById('supplierProductCategory');
+    const quantityInput = document.getElementById('supplierProductQuantity');
+    const inStockInput = document.getElementById('supplierProductInStock');
     const descriptionInput = document.getElementById('supplierProductDescription');
     const imageInput = document.getElementById('supplierProductImage');
     
-    if (!nameInput || !priceInput || !unitInput || !categoryInput || !descriptionInput) return;
+    // Валидация обязательных полей
+    if (!nameInput || !nameInput.value.trim()) {
+        showToast('error', 'Ошибка', 'Название продукта обязательно');
+        return;
+    }
+    
+    const price = parseFloat(priceInput.value);
+    const quantity = parseFloat(quantityInput.value);
+    
+    if (isNaN(price) || price <= 0) {
+        showToast('error', 'Ошибка', 'Цена должна быть положительным числом');
+        return;
+    }
+    
+    if (isNaN(quantity) || quantity < 0) {
+        showToast('error', 'Ошибка', 'Количество не может быть отрицательным');
+        return;
+    }
+    
+    if (!unitInput.value.trim()) {
+        showToast('error', 'Ошибка', 'Единица измерения обязательна');
+        return;
+    }
+    
+    if (!categoryInput.value.trim()) {
+        showToast('error', 'Ошибка', 'Категория обязательна');
+        return;
+    }
+
+    formData.append('price', price.toFixed(2));
+    formData.append('quantity', quantity);
+    
+    if (!nameInput || !priceInput || !unitInput || !categoryInput || !quantityInput) return;
+    
+    // Сначала получаем или создаем категорию
+    let categoryId;
+    try {
+        const categories = await loadCategories();
+        let category = categories.find(c => c.name.toLowerCase() === categoryInput.value.toLowerCase());
+        
+        if (!category) {
+            // Создаем новую категорию
+            const newCategory = await apiRequest('/categories', {
+                method: 'POST',
+                body: { name: categoryInput.value }
+            });
+            categoryId = newCategory.id;
+            // Обновляем кэш категорий
+            categoriesCache = null;
+            await loadCategories();
+        } else {
+            categoryId = category.id;
+        }
+    } catch (error) {
+        console.error('Ошибка при работе с категорией:', error);
+        showToast('error', 'Ошибка', 'Не удалось создать или найти категорию');
+        return;
+    }
     
     formData.append('name', nameInput.value);
     formData.append('price', priceInput.value);
     formData.append('unit', unitInput.value);
-    formData.append('category', categoryInput.value);
-    formData.append('description', descriptionInput.value);
+    formData.append('category_id', categoryId);
+    formData.append('quantity', quantityInput.value);
+    formData.append('in_stock', inStockInput.checked ? 'true' : 'false');
+    formData.append('description', descriptionInput.value || '');
     
     if (imageInput && imageInput.files[0]) {
         formData.append('image', imageInput.files[0]);
     }
 
     try {
-        const suppliers = await apiRequest('/farms');
-        const supplier = suppliers ? suppliers.find(s => s.user_id === currentUser.id) : null;
+        const farms = await apiRequest('/farms');
+        const farm = farms && Array.isArray(farms) 
+            ? farms.find(s => s.user_id === currentUser.id)
+            : null;
         
-        if (supplier) {
-            formData.append('supplier_id', supplier.id);
+        if (farm) {
+            formData.append('farm_id', farm.id);
             
             const response = await fetch(`${API_BASE_URL}/products`, {
                 method: 'POST',
@@ -2248,6 +2821,7 @@ async function deleteSupplierProduct(productId) {
     }
 }
 
+// Инициализация при загрузке страницы
 document.addEventListener('DOMContentLoaded', function() {
     const authForm = document.getElementById('authForm');
     if (authForm) {
@@ -2329,10 +2903,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     closeAuthModal();
                     renderNav();
                     
-                    if (userResponse.role === 'admin') {
+                    if (isAdmin()) {
                         navigateTo('admin');
                         showToast('success', 'Добро пожаловать, администратор!');
-                    } else if (userResponse.role === 'farmer') {
+                    } else if (isFarmer()) {
                         navigateTo('supplierPanel');
                         showToast('success', 'Добро пожаловать, фермер!');
                     } else {
@@ -2374,6 +2948,18 @@ document.addEventListener('DOMContentLoaded', function() {
     if (mobileMenuBtn) {
         mobileMenuBtn.addEventListener('click', toggleMobileMenu);
     }
+
+    // Закрытие мобильного меню при клике вне его
+    document.addEventListener('click', function(e) {
+        const mobileMenu = document.getElementById('mobileMenu');
+        const menuBtn = document.getElementById('mobileMenuBtn');
+        
+        if (mobileMenuOpen && mobileMenu && menuBtn) {
+            if (!mobileMenu.contains(e.target) && !menuBtn.contains(e.target)) {
+                closeMobileMenu();
+            }
+        }
+    });
 
     window.addEventListener('resize', function() {
         if (window.innerWidth > 768 && mobileMenuOpen) {
